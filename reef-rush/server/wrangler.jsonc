@@ -1,0 +1,14 @@
+{
+  // Fill in database_id after running:  wrangler d1 create reef-rush
+  "name": "reef-rush",
+  "main": "worker.ts",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "reef-rush", "database_id": "PASTE_THE_ID_WRANGLER_PRINTS" }
+  ]
+}
