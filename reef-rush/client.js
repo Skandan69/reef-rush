@@ -1223,6 +1223,7 @@ async function claimGems() {
   if (now - (Wallet.lastGem || 0) < 20 * 60 * 60 * 1000) return;
   try {
     const res = await fetch(`${API_BASE}/api/vip?pid=${encodeURIComponent(pid)}`);
+    if (!res.ok) throw new Error("no rankings server");
     const d = await res.json();
     if (!d || !d.vip) return;
     const award = d.days >= 7 ? 10 : 3;
@@ -1244,7 +1245,10 @@ async function refreshVip() {
     VIP.reason = (d && d.reason) || "";
     VIP.days = (d && d.days) || 0;
   } catch (e) {
-    VIP.on = Wallet.vipUntil > Date.now();
+    /* Offline build: there is no board to place on, so gating VIP behind one
+       would hide half the game with no way ever to earn it. */
+    VIP.on = true;
+    VIP.reason = "open in this build";
   }
   renderTankPick();
 }
@@ -4080,7 +4084,7 @@ function tankValue() {
   }
   return v;
 }
-const tankLevel = () => Math.max(1, Math.min(12, 1 + Math.floor(Math.sqrt(tankValue() / 260))));
+const tankLevel = () => Math.max(1, Math.min(12, 1 + Math.floor(Math.sqrt(tankValue() / 90))));
 const capFor = (id) => {
   const P = PIECES[id];
   if (!P) return 0;
