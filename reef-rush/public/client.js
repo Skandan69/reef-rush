@@ -2256,6 +2256,9 @@ function connect() {
     if (msg && msg.t === "L") { handleLive(msg); return; }
     if (msg && msg.type === "state" && msg.view && msg.view.board) {
       renderBoard(msg.view.board);
+      /* Remember how many people the room says are here. Stamped, because a
+         dropped socket must not leave a stale count standing. */
+      if (Array.isArray(msg.view.board)) { ARENA.roster = msg.view.board.length; ARENA.rosterAt = T; }
       if (msg.view.you && msg.view.you.best > G.best) G.best = msg.view.you.best;
       if (msg.view.teams) {
         UI.teamBar.innerHTML = msg.view.teams.map((t) =>
@@ -2273,7 +2276,7 @@ function connect() {
          once that player broadcasts a position, and a backgrounded tab broadcasts
          slowly, which would call two people on a pitch "waiting". A ball game has
          no AI fish, so every row on the roster is a person. */
-      const here = ballGame() && Array.isArray(msg.view.board) ? Math.max(n, msg.view.board.length) : n;
+      const here = ballGame() ? roomHeads() : n;
       UI.arena.textContent = ballGame() && here < 2
         ? `waiting for a second fish · share this link to start`
         : here > 1 ? `${here} fish in this reef · room “${room}”` : `solo reef · share ?room=${room}`;
@@ -3087,7 +3090,16 @@ function drawGhostTags() {
 const MATCH_MS = 5 * 60 * 1000;
 const PLAY_MS = 4.5 * 60 * 1000;
 
-const ARENA = { on: false, entered: false, matchId: -1, live: false, left: 0, joined: false, submitted: false, respawnAt: 0 };
+const ARENA = { on: false, entered: false, matchId: -1, live: false, left: 0, joined: false, submitted: false, respawnAt: 0, roster: 0, rosterAt: 0 };
+
+/* How many people are in this room. The roster the room broadcasts is the
+   authority; ghosts lag, because a player whose tab is in the background
+   broadcasts slowly and would be counted as absent. */
+function roomHeads() {
+  const live = ghosts.size + 1;
+  const fresh = ARENA.rosterAt > 0 && T - ARENA.rosterAt < 4;
+  return fresh ? Math.max(live, ARENA.roster || 0) : live;
+}
 
 function arenaClock() {
   const now = Date.now();
@@ -3668,7 +3680,10 @@ function stepArena() {
   ARENA.live = c.live;
   const musterLeft = SK_ON() && c.live ? Math.max(0, Math.ceil(SK_MUSTER - (PLAY_MS / 1000 - c.left))) : 0;
   /* the count is what makes a room read as real rather than merely open */
-  UI.clock.textContent = musterLeft > 0
+  const heldForPlayers = ballGame() && c.live && !ARENA.joined && roomHeads() < 2;
+  UI.clock.textContent = heldForPlayers
+    ? `WAITING FOR A SECOND FISH`
+    : musterLeft > 0
     ? `${SK.joined}/${SK_FIELD} JOINING · ${musterLeft}`
     : c.live ? `MATCH ${mmss(c.left)}` : `NEXT MATCH ${mmss(c.left)}`;
   UI.clock.style.color = c.live && c.left <= 30 ? "#ff8a7a" : "";
@@ -3679,7 +3694,12 @@ function stepArena() {
     ARENA.matchId = c.matchId;
     ARENA.submitted = false;
   }
-  if (c.live && !ARENA.joined) startArenaRound();
+  /* A ball game with one fish in it is not a match, it is an empty pitch with a
+     clock running. Hold the whistle until there is someone to play against.
+     Only the kickoff is gated: once a match is under way it plays out even if
+     the room empties, rather than being yanked away mid-goal. */
+  const enoughToPlay = !ballGame() || roomHeads() >= 2;
+  if (c.live && !ARENA.joined && enoughToPlay) startArenaRound();
   else if (!c.live && ARENA.joined) endArenaRound();
 
   stepTide();
