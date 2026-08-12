@@ -396,7 +396,10 @@ export async function readVip(env: Env, pid: string): Promise<Response> {
    client writes free-form data and it is served back to other players.
    ========================================================================== */
 
-const TANK_MAX_ITEMS = 120;
+/* 200, not 120: the byte cap below is the real guard on storage, and a densely
+   planted tank runs to about 6KB of it. The old limit stopped a build being
+   finished long before it stopped being cheap to store. */
+const TANK_MAX_ITEMS = 200;
 const TANK_MAX_BYTES = 12 * 1024;
 
 export async function saveTank(env: Env, body: unknown): Promise<Response> {
@@ -416,7 +419,11 @@ export async function saveTank(env: Env, body: unknown): Promise<Response> {
       t: typeof it.t === "string" ? it.t.slice(0, 16) : "rock",
       x: int(it.x, 0, 4000),
       y: int(it.y, 0, 2400),
-      s: Math.max(50, Math.min(200, int(it.s, 50, 200) || 100)),
+      /* Up to 420: a pillar or a kelp frond has to be able to reach a decent
+         part of a 2400-tall tank, and at 200 the tallest piece covered under a
+         quarter of it, which is why every tank looked like a strip of reef
+         along the floor. */
+      s: Math.max(50, Math.min(420, int(it.s, 50, 420) || 100)),
     };
   });
 
