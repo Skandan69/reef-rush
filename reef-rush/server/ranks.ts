@@ -88,6 +88,18 @@ async function ensureSchema(db: D1Database): Promise<void> {
   } catch {
     /* already migrated */
   }
+  /* Same reasoning for tanks.visits: CREATE TABLE IF NOT EXISTS will not add a
+     column to a table that already exists, so it goes on separately. */
+  try {
+    await db.prepare(`ALTER TABLE tanks ADD COLUMN visits INTEGER NOT NULL DEFAULT 0`).run();
+  } catch {
+    /* already migrated */
+  }
+  try {
+    await db.prepare(`CREATE INDEX IF NOT EXISTS tanks_visits ON tanks (visits DESC)`).run();
+  } catch {
+    /* index already there */
+  }
 
   /* one-off: rows written while verifying these endpoints */
   try {
@@ -436,10 +448,49 @@ export async function saveTank(env: Env, body: unknown): Promise<Response> {
   return json({ ok: true, items: items.length });
 }
 
-export async function readTank(env: Env, pid: string): Promise<Response> {
+/**
+ * The most visited tanks.
+ *
+ * Ranked by visits rather than by what a tank is worth: value ranks whoever
+ * spent the most, which is a leaderboard for the rich and a reason to grind.
+ * Visits rank whatever people actually wanted to look at.
+ */
+export async function topTanks(env: Env, limit: number, pid: string): Promise<Response> {
+  const db = env.DB;
+  await ensureSchema(db);
+  const n = Math.max(1, Math.min(25, Math.floor(limit) || 10));
+  const { results } = await db
+    .prepare(
+      `SELECT pid, name, flag, items, visits, updated FROM tanks
+        WHERE items > 0 ORDER BY visits DESC, updated DESC LIMIT ?1`,
+    )
+    .bind(n)
+    .all<{ pid: string; name: string; flag: string; items: number; visits: number; updated: number }>();
+  const rows = (results ?? []).map((r) => ({
+    pid: r.pid,
+    name: r.name,
+    flag: r.flag ?? "",
+    items: r.items,
+    visits: r.visits ?? 0,
+    blurb: `${r.items} pieces`,
+    you: r.pid === pid,
+  }));
+  return json({ ok: true, rows });
+}
+
+export async function readTank(env: Env, pid: string, by = ""): Promise<Response> {
   if (!pid) return json({ ok: false, error: "pid required" }, 400);
   const db = env.DB;
   await ensureSchema(db);
+  /* A visit is somebody else opening your tank. Your own loads do not count,
+     or the board would rank whoever reloads the most. */
+  if (by && by !== pid) {
+    try {
+      await db.prepare(`UPDATE tanks SET visits = visits + 1 WHERE pid = ?1`).bind(pid).run();
+    } catch {
+      /* a visit that fails to record is not worth failing the read over */
+    }
+  }
   const row = await db
     .prepare(`SELECT pid, name, flag, layout, updated FROM tanks WHERE pid = ?1`)
     .bind(pid)
