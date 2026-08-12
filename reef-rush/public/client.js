@@ -1192,6 +1192,22 @@ function drawMap(player) {
     mapCtx.arc(f.x * sx, f.y * sy, rr, 0, TAU);
     mapCtx.fill();
   }
+  /* the safe water, on the one view that shows the whole arena at once */
+  if (typeof SK_ON === "function" && SK_ON() && RING0.r > 0) {
+    mapCtx.save();
+    mapCtx.beginPath();
+    mapCtx.rect(0, 0, w, h);
+    mapCtx.arc(RING0.x * sx, RING0.y * sy, RING0.r * sx, 0, TAU, true);
+    mapCtx.fillStyle = "rgba(120,0,26,0.34)";
+    mapCtx.fill("evenodd");
+    mapCtx.strokeStyle = `rgba(255,120,110,${0.65 + Math.sin(T * 3) * 0.2})`;
+    mapCtx.lineWidth = 1.6;
+    mapCtx.beginPath();
+    mapCtx.arc(RING0.x * sx, RING0.y * sy, RING0.r * sx, 0, TAU);
+    mapCtx.stroke();
+    mapCtx.restore();
+  }
+
   mapCtx.fillStyle = "#ffd05e";
   mapCtx.beginPath();
   mapCtx.arc(player.x * sx, player.y * sy, 3.2, 0, TAU);
@@ -3226,9 +3242,16 @@ function stepSafeWater(dt) {
   /* Deep Strike wants a circle you can SEE from the first minute. At 0.62 of
      a 9,600-wide arena the ring was 5,952 across - wider than the water, so it
      never showed and never appeared to close. */
-  const wide = SK_ON() ? 3400 : Math.max(WORLD.w, WORLD.h) * 0.62;
+  /* Big enough to hold the entire arena at the whistle - half the diagonal
+     plus a margin - so nobody starts outside it. It opened at 3,400 in water
+     17,600 across, which put most of the hundred in the red before a shot was
+     fired: harmless while the tide only hurt the player, fatal now that it
+     kills everything. */
+  const wide = SK_ON()
+    ? Math.hypot(WORLD.w, WORLD.h) / 2 + 400
+    : Math.max(WORLD.w, WORLD.h) * 0.62;
   /* Closing Waves keeps a bigger pocket and closes more slowly */
-  const end = GAME === "tidepool" ? 1600 : SK_ON() ? 520 : 700;
+  const end = GAME === "tidepool" ? 1600 : SK_ON() ? 620 : 700;
   const pace = GAME === "tidepool" ? clamp(into * 0.82, 0, 1) : clamp(into, 0, 1);
   RING0.r = lerp(wide, end, pace);
   if (!G.running || G.dead) return;
