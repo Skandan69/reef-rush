@@ -1373,7 +1373,11 @@ function clearPredatorsNear(px, py, pr, radius) {
 
 function populate(px, py, ring, pm) {
   let guard = 0;
-  while (fishes.length < MAX_FISH && guard++ < 500) {
+  /* Deep Strike opens nearly empty on purpose. The room fills during the
+     muster, where the player can watch the count climb - a lobby that is
+     already full the moment you arrive reads as scenery, not as people. */
+  const cap = (typeof SK_ON === "function" && SK_ON()) ? 9 : MAX_FISH;
+  while (fishes.length < cap && guard++ < 500) {
     const before = fishes.length;
     spawnFish(px, py, ring, pm);
     const f = fishes[fishes.length - 1];
@@ -1426,6 +1430,10 @@ const ringSize = () => Math.hypot(VW, VH) / 2 / cam.z;
 /* Zoom out slower than the fish grows, so growing up actually feels like it. */
 function zoomFor(r) {
   const base = clamp(Math.min(VW, VH) / 780, 0.72, 1.3);
+  /* Deep Strike never changes size, so the mass-driven zoom has nothing to say
+     here. A fixed, wider frame instead: you cannot fight what you cannot see
+     coming, and at the reef zoom the fish filled half the screen. */
+  if (typeof SK_ON === "function" && SK_ON()) return clamp(base * 0.34, 0.22, 0.42);
   return clamp((base * 15.2) / Math.pow(Math.max(20, r), 0.72), 0.2, 1.2);
 }
 
@@ -3176,7 +3184,12 @@ function drawTide() {
 function stepSafeWater(dt) {
   const circling = ARENA.on && (GAME === "lastfish" || GAME === "tidepool" || GAME === "deepstrike");
   if (!circling || !ARENA.live) return;
-  const into = 1 - ARENA.left / (PLAY_MS / 1000);
+  let into = 1 - ARENA.left / (PLAY_MS / 1000);
+  /* the circle holds wide open through the muster, then starts closing */
+  if (SK_ON()) {
+    const el2 = PLAY_MS / 1000 - ARENA.left;
+    into = el2 < SK_MUSTER ? 0 : clamp((el2 - SK_MUSTER) / (PLAY_MS / 1000 - SK_MUSTER), 0, 1);
+  }
   /* Deep Strike wants a circle you can SEE from the first minute. At 0.62 of
      a 9,600-wide arena the ring was 5,952 across - wider than the water, so it
      never showed and never appeared to close. */
@@ -3239,6 +3252,11 @@ const SK_SHOCK_DPS = 24;
 const SK_NET_BREAK = 0.9;
 const SK_RESPAWNS = 2;
 const SK_RESPAWN_GEMS = 1;
+/* Every match opens with a muster. The room fills where you can watch it,
+   nobody can shoot, and a countdown runs. It reads the same wall clock every
+   client already shares, so all of them start on the same second with no
+   lobby server to coordinate. */
+const SK_MUSTER = 25;
 
 const SK_GUNS = {
   spine:   { name: "Spine",   dmg: 11, cd: 0.26, n: 1, spread: 0,    col: "#bff4ff", sp: 1150, blast: 0,   life: 0.85 },
@@ -3254,6 +3272,7 @@ const SK_LOOT = ["scatter", "lance", "rocket", "bomb", "fire"];
 const SK = {
   hp: SK_MAX_HP, kills: 0, cd: 0, gun: "spine", gunT: 0,
   respawns: SK_RESPAWNS, out: false, downT: 0, won: false,
+  muster: SK_MUSTER, lastCount: 0, joined: 0,
   bullets: [], drops: [], dropT: 3, shockT: 0, breakT: 0,
   heat: 0, left: SK_FIELD,
 };
@@ -3264,6 +3283,7 @@ function skArm(f) {
 function skReset() {
   SK.hp = SK_MAX_HP; SK.kills = 0; SK.cd = 0; SK.gun = "spine"; SK.gunT = 0;
   SK.respawns = SK_RESPAWNS; SK.out = false; SK.downT = 0; SK.won = false;
+  SK.muster = SK_MUSTER; SK.lastCount = 0; SK.joined = 0;
   SK.bullets.length = 0; SK.drops.length = 0; SK.dropT = 2; SK.shockT = 0; SK.breakT = 0;
   SK.heat = 0; SK.left = SK_FIELD;
 }
@@ -3350,7 +3370,43 @@ function stepStrike(dt) {
   SK.cd = Math.max(0, SK.cd - dt);
   if (SK.downT > 0) { SK.downT -= dt; if (SK.downT <= 0 && !SK.out) skRespawn(); }
 
-  const playing = G.running && !SK.out && SK.downT <= 0;
+  /* seconds since this match began, from the shared clock */
+  const elapsed = PLAY_MS / 1000 - ARENA.left;
+  SK.muster = Math.max(0, Math.ceil(SK_MUSTER - elapsed));
+  const mustering = SK.muster > 0;
+  if (mustering) {
+    /* They arrive in waves rather than at a machine-steady tick, each with a
+       puff of bubbles, so it reads like people joining rather than a number. */
+    const inFor = clamp(1 - SK.muster / SK_MUSTER, 0, 1);
+    const surge = 0.5 + 0.5 * Math.sin(inFor * 11);
+    const want = Math.round(lerp(9, SK_FIELD, Math.pow(inFor, 0.72)));
+    if (fishes.length < Math.min(want, SK_FIELD) && Math.random() < dt * (14 + surge * 26)) {
+      const a = rnd(0, TAU), d = RING0.r * Math.sqrt(rnd(0.05, 0.92));
+      spawnFish(RING0.x + Math.cos(a) * d, RING0.y + Math.sin(a) * d, 60, SK_MASS);
+      const nf = fishes[fishes.length - 1];
+      if (nf) {
+        nf.x = clamp(RING0.x + Math.cos(a) * d, 200, WORLD.w - 200);
+        nf.y = clamp(RING0.y + Math.sin(a) * d, 200, swimFloor() - 200);
+        layoutSpine(nf);
+        bubble(nf.x, nf.y, nf.r * 0.8, 6, 0, 0);
+      }
+    }
+    SK.bullets.length = 0;
+    SK.hp = SK_MAX_HP;
+    SK.joined = Math.min(SK_FIELD, fishes.length);
+    if (SK.muster !== SK.lastCount) {
+      SK.lastCount = SK.muster;
+      if (SK.muster <= 5) banner(`${SK.joined} of ${SK_FIELD} in the water`, String(SK.muster));
+      else if (SK.muster === SK_MUSTER - 1) banner("hold fire · the room is still filling", "GATHERING");
+    }
+  } else if (SK.lastCount !== -1) {
+    SK.lastCount = -1;
+    SK.joined = Math.min(SK_FIELD, fishes.length);
+    banner(`${SK.joined} fish · last one swimming wins`, "GO");
+    Snd.grow();
+  }
+
+  const playing = G.running && !SK.out && SK.downT <= 0 && !mustering;
   SK.heat = 0;
   for (const f of fishes) if (f.onYou > 0) { f.onYou -= dt; if (f.onYou > 0) SK.heat++; }
 
@@ -3371,6 +3427,7 @@ function stepStrike(dt) {
     skArm(f);
     f.hurt = Math.max(0, (f.hurt || 0) - dt * 2);
     if (f.netted > 0) { skHurt(f, SK_SHOCK_DPS * dt, false); continue; }
+    if (mustering) continue;
     f.skCd = (f.skCd === undefined ? rnd(0.8, 4.0) : f.skCd) - dt;
     if (f.skCd > 0) continue;
     f.skCd = rnd(1.5, 4.2);
@@ -3451,7 +3508,8 @@ function stepStrike(dt) {
      of the match was an empty ocean. The population is steered rather than
      merely drained. Reinforcements stop once the field is genuinely thin, or
      "last one standing" would mean nothing. */
-  const into = clamp(1 - ARENA.left / (PLAY_MS / 1000), 0, 1);
+  const fightFor = PLAY_MS / 1000 - SK_MUSTER;
+  const into = clamp((elapsed - SK_MUSTER) / fightFor, 0, 1);
   const target = Math.round(lerp(SK_FIELD, 1, into * into));
   if (target > 6 && fishes.length < target - 1 && Math.random() < dt * 6) {
     const a = rnd(0, TAU), d = RING0.r * rnd(0.55, 0.95);
@@ -3532,7 +3590,11 @@ function stepArena() {
   const c = arenaClock();
   ARENA.left = c.left;
   ARENA.live = c.live;
-  UI.clock.textContent = c.live ? `MATCH ${mmss(c.left)}` : `NEXT MATCH ${mmss(c.left)}`;
+  const musterLeft = SK_ON() && c.live ? Math.max(0, Math.ceil(SK_MUSTER - (PLAY_MS / 1000 - c.left))) : 0;
+  /* the count is what makes a room read as real rather than merely open */
+  UI.clock.textContent = musterLeft > 0
+    ? `${SK.joined}/${SK_FIELD} JOINING · ${musterLeft}`
+    : c.live ? `MATCH ${mmss(c.left)}` : `NEXT MATCH ${mmss(c.left)}`;
   UI.clock.style.color = c.live && c.left <= 30 ? "#ff8a7a" : "";
   /* nothing happens until the player has actually walked into the arena */
   if (!ARENA.entered) return;
@@ -5213,7 +5275,9 @@ WORLD.h = TANKS[TANK].h;
 if (ARENA.on && GAME === "football") { WORLD.w = 6400; WORLD.h = 3400; MAX_FISH = 0; MAX_FOOD = 26; }
 if (ARENA.on && GAME === "volley")   { WORLD.w = 4600; WORLD.h = 3000; MAX_FISH = 0; MAX_FOOD = 18; }
 /* A hundred fish, no plankton: nothing in this water is food. */
-if (ARENA.on && GAME === "deepstrike") { WORLD.w = 9600; WORLD.h = 4400; MAX_FISH = SK_FIELD - 1; MAX_FOOD = 0; }
+/* Three times the water. A hundred fish in 9,600 x 4,400 left barely a body
+   length between them; this gives each roughly four times the room. */
+if (ARENA.on && GAME === "deepstrike") { WORLD.w = 17600; WORLD.h = 7600; MAX_FISH = SK_FIELD - 1; MAX_FOOD = 0; }
 renderTankPick();
 buildScenery();
 buildCritters();
