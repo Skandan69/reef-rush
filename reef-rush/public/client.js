@@ -4817,7 +4817,7 @@ function seedStarterTank() {
 
 async function loadTank(who) {
   try {
-    const res = await fetch(`${API_BASE}/api/tank?pid=${encodeURIComponent(who || pid)}`);
+    const res = await fetch(`${API_BASE}/api/tank?pid=${encodeURIComponent(who || pid)}&by=${encodeURIComponent(pid)}`);
     const d = await res.json();
     TANKV.items = Array.isArray(d.items) ? d.items : [];
     TANKV.viewName = d.name || "";
