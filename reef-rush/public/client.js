@@ -4919,7 +4919,7 @@ function renderGallery(rows) {
 /** Pull the board. Silent on failure: offline simply means no gallery. */
 async function refreshGallery() {
   try {
-    const res = await apiFetch(`/api/tanks/top?limit=10&pid=${encodeURIComponent(pid)}`);
+    const res = await fetch(`${API_BASE}/api/tanks/top?limit=10&pid=${encodeURIComponent(pid)}`);
     const d = await res.json();
     if (d && Array.isArray(d.rows)) renderGallery(d.rows);
   } catch (e) {}
