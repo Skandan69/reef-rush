@@ -2256,9 +2256,13 @@ function connect() {
     if (msg && msg.t === "L") { handleLive(msg); return; }
     if (msg && msg.type === "state" && msg.view && msg.view.board) {
       renderBoard(msg.view.board);
-      /* Remember how many people the room says are here. Stamped, because a
-         dropped socket must not leave a stale count standing. */
-      if (Array.isArray(msg.view.board)) { ARENA.roster = msg.view.board.length; ARENA.rosterAt = T; }
+      /* Remember how many people the room says are here. `connected` counts
+         sockets and is the truer number; the roster is the fallback. This is
+         not time-decayed, because the room only broadcasts on join and on
+         action: two players sitting still send nothing, and an expiring count
+         would call them alone and never start the match. ws.onclose clears it,
+         which is the only moment we actually stop knowing. */
+      ARENA.roster = Math.max(Number(msg.connected) || 0, Array.isArray(msg.view.board) ? msg.view.board.length : 0);
       if (msg.view.you && msg.view.you.best > G.best) G.best = msg.view.you.best;
       if (msg.view.teams) {
         UI.teamBar.innerHTML = msg.view.teams.map((t) =>
@@ -2284,6 +2288,8 @@ function connect() {
   };
   ws.onclose = () => {
     wsReady = false;
+    /* We no longer know who is in the room, so stop claiming to. */
+    ARENA.roster = 0;
     retry = Math.min(retry + 1, 6);
     setTimeout(connect, 900 * retry);
   };
@@ -3090,15 +3096,13 @@ function drawGhostTags() {
 const MATCH_MS = 5 * 60 * 1000;
 const PLAY_MS = 4.5 * 60 * 1000;
 
-const ARENA = { on: false, entered: false, matchId: -1, live: false, left: 0, joined: false, submitted: false, respawnAt: 0, roster: 0, rosterAt: 0 };
+const ARENA = { on: false, entered: false, matchId: -1, live: false, left: 0, joined: false, submitted: false, respawnAt: 0, roster: 0 };
 
 /* How many people are in this room. The roster the room broadcasts is the
    authority; ghosts lag, because a player whose tab is in the background
    broadcasts slowly and would be counted as absent. */
 function roomHeads() {
-  const live = ghosts.size + 1;
-  const fresh = ARENA.rosterAt > 0 && T - ARENA.rosterAt < 4;
-  return fresh ? Math.max(live, ARENA.roster || 0) : live;
+  return Math.max(ghosts.size + 1, ARENA.roster || 0);
 }
 
 function arenaClock() {
