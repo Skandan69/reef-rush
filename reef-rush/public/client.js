@@ -56,8 +56,12 @@ const Snd = (() => {
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
+  const ok = (v, fb) => (Number.isFinite(v) ? v : fb);
   function tone(f0, f1, dur, gain, type) {
     if (!ctx || muted) return;
+    /* Math.max(20, NaN) is NaN, so a bad frequency sailed into WebAudio and
+       threw. A sound effect must never be able to take the game down. */
+    f0 = ok(f0, 220); f1 = ok(f1, 220); dur = Math.max(0.01, ok(dur, 0.1)); gain = ok(gain, 0.2);
     const t = ctx.currentTime;
     const o = ctx.createOscillator();
     o.type = type || "sine";
@@ -72,6 +76,7 @@ const Snd = (() => {
   }
   function noise(dur, type, f0, f1, gain) {
     if (!ctx || muted) return;
+    dur = Math.max(0.01, ok(dur, 0.1)); f0 = ok(f0, 600); f1 = ok(f1, 600); gain = ok(gain, 0.2);
     const t = ctx.currentTime;
     const s = ctx.createBufferSource();
     s.buffer = noiseBuf; s.loop = true;
@@ -390,7 +395,9 @@ function spawnFish(px, py, ring, pm) {
      fish. Nothing spawns scaled to you, ever. Every big fish in this ocean
      got big the same way you did — by eating — which is why the shoal is
      recycled below rather than deleted, so it has the time to. */
-  const mass = clamp(Math.exp(rnd(Math.log(10), Math.log(120))), 9, AI_MAX_MASS);
+  /* Deep Strike has no size ladder: every fish is identical. */
+  const mass = (typeof SK_ON === "function" && SK_ON())
+    ? 260 : clamp(Math.exp(rnd(Math.log(10), Math.log(120))), 9, AI_MAX_MASS);
   const far = 1;
   const big = false;   /* nobody arrives as a predator */
   if (far > 1) {
@@ -1323,9 +1330,9 @@ function openRanks() {
 }
 
 function submitRun() {
-  if (!G.score) return;
+  if (!G.score) return Promise.resolve();
   try {
-    fetch(`${API_BASE}/api/run`, {
+    return fetch(`${API_BASE}/api/run`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -1335,6 +1342,7 @@ function submitRun() {
       keepalive: true,
     }).catch(() => {});
   } catch (e) {}
+  return Promise.resolve();
 }
 
 const G = {
@@ -1480,15 +1488,22 @@ function gameOver(killer) {
   if (G.score > G.best) { G.best = G.score; try { localStorage.setItem("rr_best", String(G.best)); } catch (e) {} }
   G.deathMass = player.mass;
   G.earned = G.score >= 60 ? Math.floor(G.score / 25) + G.kills * 2 : 0;
+  /* Deep Strike pays no pearls on purpose: what you carry is only what you
+     found on the sea floor during the match. */
+  if (SK_ON()) G.earned = 0;
+  /* The cold start: a first run pays 8-20 pearls, which buys nothing worth
+     placing. One grant, once ever, so the first visit to the tank is a
+     shopping trip rather than a locked door. */
+  if (!Wallet.firstHaul && G.score >= 60) { Wallet.firstHaul = 1; G.earned += 150; G.firstHaulPaid = true; }
   G.gemsEarned = 0;          /* gems are a placing reward — see claimGems() */
   Wallet.pearls += G.earned;
   Wallet.save();
-  claimGems();
   UI.fscore.textContent = G.score.toLocaleString();
   UI.fkills.textContent = String(G.kills);
   UI.fbest.textContent = G.best.toLocaleString();
   UI.fsize.textContent = stageFor(G.peakR);
   UI.fpearls.textContent = G.earned.toLocaleString();
+  if (G.firstHaulPaid) { G.firstHaulPaid = false; setTimeout(() => banner("enough to furnish your tank", "+150 first haul"), 900); }
   UI.fgems.textContent = G.gemsEarned ? ` and ${G.gemsEarned} 💎` : "";
   const cost = continueCost();
   UI.contcost.textContent = cost.toLocaleString();
@@ -1497,7 +1512,10 @@ function gameOver(killer) {
     ? `Swallowed by something ${Math.round((killer.r / player.r) * 10) / 10}× your size.`
     : "The reef got the better of you.";
   push(true);
-  submitRun();
+  /* Submit the run, THEN ask where it left you standing. Asking first answers
+     about the player you were before this run, so the run that actually earns
+     a top-ten place awarded neither the gems nor the VIP tanks. */
+  submitRun().then(() => { refreshVip(); claimGems(); });
   setTimeout(() => { UI.over.classList.remove("hide"); UI.hud.classList.remove("on"); }, 1000);
 }
 
@@ -1658,6 +1676,7 @@ function eatFood() {
 function step(dt) {
   T += dt;
   stepArena();
+  stepStrike(dt);
   stepBall(dt);
   stepCritters(dt);
   stepBoss(dt);
@@ -1681,7 +1700,9 @@ function step(dt) {
   }
   stepGhosts(dt);
 
-  if (!G.dead) { collide(); collidePlayers(); if (G.running) eatFood(); }
+  /* Deep Strike is the one mode where size is not the argument, so the eating
+     rules are switched off wholesale rather than special-cased inside them. */
+  if (!G.dead) { if (!SK_ON()) collide(); collidePlayers(); if (G.running && !SK_ON()) eatFood(); }
   botsGraze(dt);
   stepGlobs(dt);
   stepNets(dt);
@@ -1710,7 +1731,7 @@ function step(dt) {
     const q = food[i];
     if (Math.hypot(q.x - player.x, q.y - player.y) > foodFar) food.splice(i, 1);
   }
-  if (fishes.length < MAX_FISH && Math.random() < dt * 30) spawnFish(player.x, player.y, ring, player.mass);
+  if (!SK_ON() && fishes.length < MAX_FISH && Math.random() < dt * 30) spawnFish(player.x, player.y, ring, player.mass);
   /* retire bots that have topped out and drifted off-screen, so the shoal keeps
      turning over instead of settling into one giant size class */
   if (Math.random() < dt * 2) {
@@ -1886,6 +1907,7 @@ function render() {
   }
   drawGlobs();
   drawNets();
+  drawStrike();
   drawBits();
   drawArrows();
 
@@ -2070,7 +2092,9 @@ function refreshBoard() {
     if (f.kind !== "ai") continue;
     entries.push({ name: f.pname || "reef fish", team: -1, mass: Math.round(f.mass), kills: f.kills || 0, you: false, bot: true });
   }
-  entries.sort((a, b) => b.mass - a.mass);
+  /* Deep Strike is ranked on kills, because size means nothing in it. */
+  if (SK_ON()) entries.sort((a, b) => (b.kills || 0) - (a.kills || 0) || b.mass - a.mass);
+  else entries.sort((a, b) => b.mass - a.mass);
 
   /* you always get a line, even when the whole reef is bigger than you */
   const top = entries.slice(0, 7);
@@ -2103,6 +2127,7 @@ const GAMES = {
   tidepool: { name: "Closing Waves", icon: "≋", blurb: "Rings of surf push inward. Stay inside or lose everything.", teams: false },
   football: { name: "Fish Football", icon: "⬤", blurb: "Shove the pearl into their goal.", teams: true },
   volley:   { name: "Fish Volleyball", icon: "⬡", blurb: "Keep the pearl off your own sea floor.", teams: true },
+  deepstrike: { name: "Deep Strike", icon: "✦", blurb: "A hundred fish, no food, every one the same size. Last one swimming wins.", teams: false },
 };
 /* Three bodies of water. One is open to everyone; the other two are the
    reward for finishing near the top of a board, or for buying in. */
@@ -2341,7 +2366,7 @@ function paintFlag(c, f, x, y, w, h) {
 }
 
 const Wallet = {
-  pearls: 0, gems: 0, vipUntil: 0, lastGem: 0, owned: { clown: 1 }, skin: "clown", flag: "", team: -1,
+  pearls: 0, gems: 0, vipUntil: 0, lastGem: 0, lastTend: 0, firstHaul: 0, owned: { clown: 1 }, skin: "clown", flag: "", team: -1,
   load() {
     try {
       const raw = JSON.parse(localStorage.getItem("rr_wallet") || "{}");
@@ -2990,6 +3015,7 @@ function startArenaRound() {
   G.startedAt = T;
   clearPredatorsNear(player.x, player.y, player.r, ringSize() * 1.5);
   ARENA.joined = true;
+  if (SK_ON()) skReset();
   ARENA.submitted = false;
   ARENA.respawnAt = 0;
   ARENA.lives = 0;
@@ -3115,7 +3141,7 @@ function drawTide() {
 }
 
 function stepSafeWater(dt) {
-  const circling = ARENA.on && (GAME === "lastfish" || GAME === "tidepool");
+  const circling = ARENA.on && (GAME === "lastfish" || GAME === "tidepool" || GAME === "deepstrike");
   if (!circling || !ARENA.live) return;
   const into = 1 - ARENA.left / (PLAY_MS / 1000);
   const wide = Math.max(WORLD.w, WORLD.h) * 0.62;
@@ -3126,6 +3152,13 @@ function stepSafeWater(dt) {
   if (!G.running || G.dead) return;
   const d = Math.hypot(player.x - RING0.x, player.y - RING0.y);
   if (d < RING0.r) return;
+  if (SK_ON()) {
+    /* out here it is the water that kills you, not a fish */
+    SK.hp -= 17 * dt;
+    cam.shake = Math.min(0.6, cam.shake + dt);
+    if (SK.hp <= 0) skDown();
+    return;
+  }
   /* outside: bleeding mass, and a nudge back toward the light */
   player.mass = Math.max(1, player.mass * (1 - 1.1 * dt));
   player.r = radiusOf(player.mass);
@@ -3136,7 +3169,7 @@ function stepSafeWater(dt) {
 }
 
 function drawSafeWater() {
-  if (!ARENA.on || (GAME !== "lastfish" && GAME !== "tidepool") || !ARENA.live) return;
+  if (!ARENA.on || (GAME !== "lastfish" && GAME !== "tidepool" && GAME !== "deepstrike") || !ARENA.live) return;
   ctx.save();
   ctx.fillStyle = "rgba(80,0,20,0.32)";
   ctx.beginPath();
@@ -3149,6 +3182,306 @@ function drawSafeWater() {
   ctx.arc(RING0.x, RING0.y, RING0.r, 0, TAU);
   ctx.stroke();
   ctx.restore();
+}
+
+
+/* ==========================================================================
+   DEEP STRIKE — the shooting arena
+   ==========================================================================
+   A hundred fish in one body of water and nothing to eat. Nobody grows here
+   and nobody shrinks; every fish is the same size and the only thing that
+   separates two of them is aim. Health means one hit never ends anyone, so
+   this is a fight rather than an ambush. Nets are the counterweight to raw
+   shooting: a tangled fish is held and shocked, and the only way out is to
+   burn boost before the current drains you. Last one swimming wins.
+   ========================================================================== */
+
+const SK_ON = () => ARENA.on && GAME === "deepstrike";
+const SK_MAX_HP = 100;
+const SK_FIELD = 100;
+const SK_SHOCK_DPS = 24;
+const SK_NET_BREAK = 0.9;
+const SK_RESPAWNS = 2;
+const SK_RESPAWN_GEMS = 1;
+
+const SK_GUNS = {
+  spine:   { name: "Spine",   dmg: 11, cd: 0.26, n: 1, spread: 0,    col: "#bff4ff", sp: 1150, blast: 0,   life: 0.85 },
+  scatter: { name: "Scatter", dmg: 7,  cd: 0.42, n: 4, spread: 0.30, col: "#ffd98a", sp: 1000, blast: 0,   life: 0.55 },
+  lance:   { name: "Lance",   dmg: 26, cd: 0.62, n: 1, spread: 0,    col: "#ff9ecb", sp: 1500, blast: 0,   life: 1.10 },
+  /* the heavy end: slower, but they do not have to touch you to hurt */
+  rocket:  { name: "Rocket",  dmg: 30, cd: 1.10, n: 1, spread: 0,    col: "#ff8a5c", sp: 760,  blast: 210, life: 1.60, trail: 1 },
+  bomb:    { name: "Bomb",    dmg: 42, cd: 1.35, n: 1, spread: 0,    col: "#ffe08a", sp: 520,  blast: 300, life: 1.25, lob: 1 },
+  fire:    { name: "Fire",    dmg: 5,  cd: 0.07, n: 1, spread: 0.16, col: "#ff7a3c", sp: 620,  blast: 0,   life: 0.28 },
+};
+const SK_LOOT = ["scatter", "lance", "rocket", "bomb", "fire"];
+
+const SK = {
+  hp: SK_MAX_HP, kills: 0, cd: 0, gun: "spine", gunT: 0,
+  respawns: SK_RESPAWNS, out: false, downT: 0, won: false,
+  bullets: [], drops: [], dropT: 3, shockT: 0, breakT: 0,
+  heat: 0, left: SK_FIELD,
+};
+
+function skArm(f) {
+  if (f.hp === undefined) { f.hp = SK_MAX_HP; f.maxHp = SK_MAX_HP; f.kills = f.kills || 0; }
+}
+function skReset() {
+  SK.hp = SK_MAX_HP; SK.kills = 0; SK.cd = 0; SK.gun = "spine"; SK.gunT = 0;
+  SK.respawns = SK_RESPAWNS; SK.out = false; SK.downT = 0; SK.won = false;
+  SK.bullets.length = 0; SK.drops.length = 0; SK.dropT = 2; SK.shockT = 0; SK.breakT = 0;
+  SK.heat = 0; SK.left = SK_FIELD;
+}
+function skStanding() {
+  let n = SK.out ? 0 : 1;
+  for (const f of fishes) if (f !== player && f.kind !== "ghost" && !f.dead) n++;
+  return n;
+}
+function skFire(f, ang) {
+  const g = SK_GUNS[f === player ? SK.gun : "spine"];
+  for (let i = 0; i < g.n; i++) {
+    const a = ang + (g.n > 1 ? (i - (g.n - 1) / 2) * g.spread : rnd(-g.spread, g.spread));
+    SK.bullets.push({
+      x: f.x + Math.cos(a) * f.r * 0.9, y: f.y + Math.sin(a) * f.r * 0.9,
+      vx: Math.cos(a) * g.sp, vy: Math.sin(a) * g.sp,
+      life: g.life, dmg: g.dmg, col: g.col, mine: f === player, owner: f,
+      blast: g.blast || 0, lob: g.lob || 0, trail: g.trail || 0,
+    });
+  }
+  bubble(f.x + Math.cos(ang) * f.r, f.y + Math.sin(ang) * f.r, f.r * 0.16, 2, 0, 0);
+  if (f === player) Snd.spit();
+}
+/** One place where damage lands, so nothing can bleed out twice. */
+function skHurt(f, dmg, byPlayer) {
+  if (f.dead) return;
+  skArm(f);
+  f.hp -= dmg; f.hurt = 0.35;
+  if (f.hp > 0) return;
+  f.dead = true; f.hp = 0;
+  spark(f.x, f.y, f.r * 1.3, "rgba(255,150,120,1)");
+  bubble(f.x, f.y, f.r, 14, 0, 0);
+  if (byPlayer) {
+    SK.kills++; G.kills = SK.kills; G.score += 100;
+    floatText(f.x, f.y - f.r, "+1", "#ff9b8c"); Snd.eat();
+  }
+}
+function skDown() {
+  if (SK.out || SK.downT > 0) return;
+  SK.downT = 3.2;
+  spark(player.x, player.y, player.r * 1.5, "rgba(255,150,120,1)");
+  cam.shake = 1; Snd.die();
+  if (SK.respawns > 0 && Wallet.gems >= SK_RESPAWN_GEMS) {
+    SK.respawns--; Wallet.gems -= SK_RESPAWN_GEMS; Wallet.save();
+    banner(`${SK.respawns} left · ${SK_RESPAWN_GEMS} gem`, "BACK IN THE WATER");
+  } else {
+    SK.out = true;
+    banner(SK.respawns > 0 ? "no gems left to spend" : "no respawns left", "YOU ARE OUT");
+  }
+}
+function skRespawn() {
+  SK.hp = SK_MAX_HP; SK.gun = "spine"; SK.gunT = 0;
+  const a = rnd(0, TAU), d = rnd(400, Math.max(500, RING0.r * 0.7));
+  player.x = clamp(RING0.x + Math.cos(a) * d, 120, WORLD.w - 120);
+  player.y = clamp(RING0.y + Math.sin(a) * d, 120, swimFloor() - 120);
+  player.netted = 0; G.grace = 2.5;
+}
+const SK_DROPS = { heart: { col: "#ff6f8b" }, ammo: { col: "#9ee7ff" }, gun: { col: "#ffd98a" } };
+function skSpawnDrop() {
+  /* The water gets meaner as the field thins: with a handful left there is
+     almost nothing to pick up and no way to heal out of a bad fight. */
+  const plenty = clamp((skStanding() - 8) / (SK_FIELD - 8), 0.12, 1);
+  const roll = Math.random();
+  const kind = roll < 0.45 ? "heart" : roll < 0.7 ? "ammo" : "gun";
+  const a = rnd(0, TAU), d = rnd(0, RING0.r * 0.86);
+  SK.drops.push({
+    kind, x: clamp(RING0.x + Math.cos(a) * d, 140, WORLD.w - 140),
+    y: clamp(RING0.y + Math.sin(a) * d, 140, swimFloor() - 140),
+    ph: rnd(0, TAU), life: 26, gun: SK_LOOT[(Math.random() * SK_LOOT.length) | 0],
+  });
+  SK.dropT = lerp(6.5, 1.6, plenty);
+}
+function skTakeDrop(d, i) {
+  if (d.kind === "heart") { SK.hp = Math.min(SK_MAX_HP, SK.hp + 30); floatText(player.x, player.y - player.r, "+30 LIFE", "#ff6f8b"); }
+  else if (d.kind === "ammo") { PU.nets += 2; floatText(player.x, player.y - player.r, "+2 NETS", "#9ee7ff"); }
+  else { SK.gun = d.gun; SK.gunT = 15; floatText(player.x, player.y - player.r, SK_GUNS[d.gun].name.toUpperCase() + " 15s", "#ffd98a"); }
+  SK.drops.splice(i, 1); Snd.pickup();
+}
+
+function stepStrike(dt) {
+  if (!SK_ON()) return;
+  if (!ARENA.live) { if (SK.bullets.length) SK.bullets.length = 0; return; }
+  skArm(player);
+  if (SK.gunT > 0 && (SK.gunT -= dt) <= 0) { SK.gun = "spine"; banner("back to the spine", "borrowed time is up"); }
+  SK.cd = Math.max(0, SK.cd - dt);
+  if (SK.downT > 0) { SK.downT -= dt; if (SK.downT <= 0 && !SK.out) skRespawn(); }
+
+  const playing = G.running && !SK.out && SK.downT <= 0;
+  SK.heat = 0;
+  for (const f of fishes) if (f.onYou > 0) { f.onYou -= dt; if (f.onYou > 0) SK.heat++; }
+
+  if (playing && IN.spit && SK.cd <= 0) { SK.cd = SK_GUNS[SK.gun].cd; skFire(player, player.a); }
+
+  if (playing && player.netted > 0) {
+    SK.shockT += dt; SK.hp -= SK_SHOCK_DPS * dt;
+    cam.shake = Math.min(0.5, cam.shake + dt * 0.8);
+    if (IN.dash && G.stam > 0.02) {
+      SK.breakT += dt;
+      if (SK.breakT >= SK_NET_BREAK) { player.netted = 0; SK.breakT = 0; floatText(player.x, player.y - player.r, "FREE", "#9effc9"); }
+    } else SK.breakT = Math.max(0, SK.breakT - dt * 0.6);
+    if (SK.hp <= 0) skDown();
+  } else { SK.shockT = 0; SK.breakT = 0; }
+
+  for (const f of fishes) {
+    if (f === player || f.kind === "ghost" || f.dead) continue;
+    skArm(f);
+    f.hurt = Math.max(0, (f.hurt || 0) - dt * 2);
+    if (f.netted > 0) { skHurt(f, SK_SHOCK_DPS * dt, false); continue; }
+    f.skCd = (f.skCd === undefined ? rnd(0.8, 4.0) : f.skCd) - dt;
+    if (f.skCd > 0) continue;
+    f.skCd = rnd(1.5, 4.2);
+    /* Most of them are busy with each other. Without this cap all ninety-nine
+       picked the nearest target — always you — and you died in six seconds. */
+    let tx = 0, ty = 0, td = 1e9;
+    for (let k = 0; k < 3; k++) {
+      const o = fishes[(Math.random() * fishes.length) | 0];
+      if (!o || o === f || o.dead || o.kind === "ghost") continue;
+      const d2 = Math.hypot(o.x - f.x, o.y - f.y);
+      if (d2 < td) { td = d2; tx = o.x; ty = o.y; }
+    }
+    const pd = playing ? Math.hypot(player.x - f.x, player.y - f.y) : 1e9;
+    if (pd < 900 && SK.heat < 6 && Math.random() < 0.3) { SK.heat++; f.onYou = 1.6; td = pd; tx = player.x; ty = player.y; }
+    if (td > 1150) continue;
+    skFire(f, Math.atan2(ty - f.y, tx - f.x) + rnd(-0.2, 0.2));
+  }
+
+  for (let i = SK.bullets.length - 1; i >= 0; i--) {
+    const b = SK.bullets[i];
+    b.life -= dt;
+    if (b.lob) b.vy += 420 * dt;                 /* a bomb is thrown, not fired */
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.trail && Math.random() < dt * 30) bubble(b.x, b.y, 7, 1, 0, 0);
+    let gone = false;
+    if (b.life <= 0) {
+      if (b.blast > 0) gone = true;              /* the fuse counts as a hit */
+      else { SK.bullets.splice(i, 1); continue; }
+    }
+    if (!gone && playing && !b.mine && G.grace <= 0 && Math.hypot(player.x - b.x, player.y - b.y) < player.r) {
+      SK.hp -= b.dmg; cam.shake = Math.min(0.5, cam.shake + 0.16);
+      floatText(player.x, player.y - player.r, "-" + b.dmg, "#ff8a8a");
+      if (SK.hp <= 0) skDown();
+      gone = true;
+    }
+    if (!gone) {
+      for (const f of fishes) {
+        if (f === player || f.dead || f.kind === "ghost" || f === b.owner) continue;
+        if (Math.hypot(f.x - b.x, f.y - b.y) > f.r) continue;
+        skHurt(f, b.dmg, b.mine); gone = true; break;
+      }
+    }
+    if (gone) {
+      if (b.blast > 0) {
+        /* a blast does not care what it was aimed at */
+        spark(b.x, b.y, b.blast * 0.5, "rgba(255,190,120,1)");
+        bubble(b.x, b.y, b.blast * 0.3, 12, 0, 0);
+        cam.shake = Math.min(0.7, cam.shake + 0.3);
+        for (const f of fishes) {
+          if (f === player || f.dead || f.kind === "ghost") continue;
+          const d2 = Math.hypot(f.x - b.x, f.y - b.y);
+          if (d2 < b.blast) skHurt(f, b.dmg * (1 - d2 / b.blast), b.mine);
+        }
+        const pd = Math.hypot(player.x - b.x, player.y - b.y);
+        if (playing && G.grace <= 0 && pd < b.blast) {
+          SK.hp -= b.dmg * (1 - pd / b.blast) * (b.mine ? 0.35 : 1);   /* your own blast still stings */
+          if (SK.hp <= 0) skDown();
+        }
+      } else spark(b.x, b.y, 22, "rgba(255,220,170,1)");
+      SK.bullets.splice(i, 1);
+    }
+  }
+
+  if ((SK.dropT -= dt) <= 0) skSpawnDrop();
+  for (let i = SK.drops.length - 1; i >= 0; i--) {
+    const d = SK.drops[i];
+    d.ph += dt; d.life -= dt;
+    if (d.life <= 0) { SK.drops.splice(i, 1); continue; }
+    if (playing && Math.hypot(player.x - d.x, player.y - d.y) < player.r + 90) skTakeDrop(d, i);
+  }
+
+  for (let i = fishes.length - 1; i >= 0; i--) {
+    const f = fishes[i];
+    if (f !== player && f.dead) fishes.splice(i, 1);
+  }
+
+  /* Left alone the shoal wiped itself out in about eighty seconds and the rest
+     of the match was an empty ocean. The population is steered rather than
+     merely drained. Reinforcements stop once the field is genuinely thin, or
+     "last one standing" would mean nothing. */
+  const into = clamp(1 - ARENA.left / (PLAY_MS / 1000), 0, 1);
+  const target = Math.round(lerp(SK_FIELD, 1, into * into));
+  if (target > 6 && fishes.length < target - 1 && Math.random() < dt * 6) {
+    const a = rnd(0, TAU), d = RING0.r * rnd(0.75, 0.98);
+    spawnFish(RING0.x + Math.cos(a) * d, RING0.y + Math.sin(a) * d, 60, 260);
+  }
+  SK.left = skStanding();
+  if (!SK.won && !SK.out && SK.left <= 1 && G.running) {
+    SK.won = true; G.score += 2000;
+    banner("nothing left out there", "LAST ONE STANDING"); Snd.grow();
+  }
+}
+
+function drawStrike() {
+  if (!SK_ON() || !ARENA.live) return;
+  for (const d of SK.drops) {
+    ctx.save();
+    ctx.translate(d.x, d.y + Math.sin(d.ph * 2) * 8);
+    ctx.globalAlpha = d.life < 4 ? 0.35 + Math.sin(d.ph * 12) * 0.3 : 1;
+    ctx.fillStyle = SK_DROPS[d.kind].col;
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 3;
+    if (d.kind === "heart") {
+      ctx.beginPath(); ctx.moveTo(0, 18);
+      ctx.bezierCurveTo(-26, -2, -14, -24, 0, -10);
+      ctx.bezierCurveTo(14, -24, 26, -2, 0, 18); ctx.fill();
+    } else if (d.kind === "ammo") {
+      ctx.beginPath(); ctx.arc(0, 0, 16, 0, TAU); ctx.stroke();
+      for (let k = -1; k <= 1; k++) {
+        ctx.beginPath(); ctx.moveTo(k * 8, -14); ctx.lineTo(k * 8, 14); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-14, k * 8); ctx.lineTo(14, k * 8); ctx.stroke();
+      }
+    } else {
+      ctx.beginPath();
+      for (let k = 0; k < 5; k++) {
+        const a = -Math.PI / 2 + (k * TAU) / 5;
+        k ? ctx.lineTo(Math.cos(a) * 17, Math.sin(a) * 17) : ctx.moveTo(Math.cos(a) * 17, Math.sin(a) * 17);
+      }
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+  for (const b of SK.bullets) {
+    ctx.strokeStyle = b.col;
+    ctx.lineWidth = b.blast ? 7 : b.mine ? 4 : 3;
+    ctx.beginPath(); ctx.moveTo(b.x, b.y);
+    ctx.lineTo(b.x - b.vx * 0.016, b.y - b.vy * 0.016); ctx.stroke();
+  }
+  /* Every fish wears its health all the time. Flashing a bar up only after a
+     hit meant you never knew which of them was nearly finished. */
+  for (const f of fishes) {
+    if (f.kind === "ghost" || f.dead || f.hp === undefined) continue;
+    if (f.r * cam.z < 9) continue;
+    const w = Math.max(46, f.r * 1.6), h = 7, y = f.y - f.r - 26;
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(f.x - w / 2, y, w, h);
+    const frac = f === player ? clamp(SK.hp / SK_MAX_HP, 0, 1) : clamp(f.hp / SK_MAX_HP, 0, 1);
+    ctx.fillStyle = frac > 0.5 ? "#8ff0b0" : frac > 0.25 ? "#ffd98a" : "#ff8a8a";
+    ctx.fillRect(f.x - w / 2, y, w * frac, h);
+  }
+  if (player.netted > 0 && SK.breakT > 0) {
+    ctx.strokeStyle = "rgba(160,240,255,0.9)";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r + 26, -Math.PI / 2, -Math.PI / 2 + TAU * (SK.breakT / SK_NET_BREAK));
+    ctx.stroke();
+  }
 }
 
 function stepArena() {
@@ -3400,10 +3733,12 @@ for (const [key, file] of [["poseidon", "poseidon.png"], ["mermaid", "mermaid.pn
 /* Painted pose sets. Each is optional: a missing file just falls back to
    the single painted image, and a missing pose set falls back to the
    code-drawn character, so the game never breaks on a 404. */
-const POSE = { poseidon: {}, mermaid: {} };
+const POSE = { poseidon: {}, mermaid: {}, crab: {}, prawn: {}, seahorse: {}, octopus: {} };
 for (const [who, name] of [
   ["poseidon", "idle"], ["poseidon", "windup"], ["poseidon", "strike"], ["poseidon", "recoil"],
   ["mermaid", "idle"], ["mermaid", "swim"], ["mermaid", "turn"], ["mermaid", "rest"],
+  ["crab", "idle"], ["crab", "move"], ["prawn", "idle"], ["prawn", "move"],
+  ["seahorse", "idle"], ["seahorse", "move"], ["octopus", "idle"], ["octopus", "move"],
 ]) {
   const img = new Image();
   img.src = `art/${who}_${name}.png`;
@@ -3412,8 +3747,10 @@ for (const [who, name] of [
 const poseOf = (who, name) => POSE[who][name] || POSE[who].idle || ART[who] || null;
 
 /** Draw a painted sprite with the same idle life the drawn ones had. */
-function drawSprite(img, k, ph, bob, tilt) {
-  const h = k * 3.4;
+/* `grow` exists because 3.4 was chosen for Poseidon, who is a landmark. A crab
+   drawn at the same multiple would be the size of a shipwreck. */
+function drawSprite(img, k, ph, bob, tilt, grow) {
+  const h = k * (grow || 3.4);
   const w = h * (img.width / img.height);
   ctx.save();
   ctx.rotate(Math.sin(ph * 0.55) * tilt);
@@ -3456,6 +3793,18 @@ function stepCritters(dt) {
 
     /* mermaids change what they are doing every few seconds, so a court
        full of them does not read as one image repeated */
+    /* The little ones alternate between resting and moving on their own clocks,
+       so a tank full of crabs never looks like one crab stamped four times. */
+    if (c.kind === "crab" || c.kind === "prawn" || c.kind === "seahorse" || c.kind === "octopus") {
+      c.beat = (c.beat === undefined ? rnd(1.2, 4.5) : c.beat) - dt;
+      if (c.beat <= 0) {
+        c.beat = rnd(2.2, 5.5);
+        c.prev = c.pose || "idle";
+        c.pose = c.pose === "move" ? "idle" : "move";
+        c.fade = 0;
+      }
+      if (c.fade !== undefined && c.fade < 1) c.fade = Math.min(1, c.fade + dt / POSE_BLEND);
+    }
     if (c.kind === "mermaid") {
       c.poseT = (c.poseT === undefined ? rnd(2, 10) : c.poseT) - dt;
       if (c.poseT <= 0) {
@@ -3493,21 +3842,25 @@ function drawCritters() {
     ctx.translate(c.x, c.y + Math.sin(c.ph) * 8);
     ctx.scale(c.dir, 1);
 
-    const isArt = c.kind === "poseidon" || c.kind === "mermaid";
-    const bob = c.kind === "mermaid" ? 0.07 : 0.05;
-    const tilt = c.kind === "mermaid" ? 0.05 : 0.03;
-    const cmix = c.kind === "mermaid" && c.prev && c.prev !== c.pose && c.fade < 1;
+    const isArt = POSE[c.kind] !== undefined;
+    const small = c.kind === "crab" || c.kind === "prawn" || c.kind === "seahorse" || c.kind === "octopus";
+    const bob = c.kind === "mermaid" ? 0.07 : c.kind === "crab" ? 0.02 : small ? 0.06 : 0.05;
+    const tilt = c.kind === "mermaid" ? 0.05 : c.kind === "crab" ? 0.01 : small ? 0.04 : 0.03;
+    const cmix = (c.kind === "mermaid" || small) && c.prev && c.prev !== c.pose && c.fade < 1;
+    /* matched by eye to the footprints the code-drawn versions had */
+    const grow = c.kind === "crab" ? 1.5 : c.kind === "prawn" ? 1.6
+      : c.kind === "seahorse" ? 2.0 : c.kind === "octopus" ? 1.8 : 3.4;
     let cimg = null;
     if (isArt) {
       if (cmix) {
-        const a = poseOf("mermaid", c.prev);
-        if (a) { ctx.save(); ctx.globalAlpha *= 1 - c.fade; drawSprite(a, k, c.ph, bob, tilt); ctx.restore(); }
+        const a = poseOf(c.kind, c.prev);
+        if (a) { ctx.save(); ctx.globalAlpha *= 1 - c.fade; drawSprite(a, k, c.ph, bob, tilt, grow); ctx.restore(); }
       }
-      cimg = poseOf(c.kind, c.kind === "mermaid" ? (c.pose || "idle") : "idle");
+      cimg = poseOf(c.kind, (c.kind === "mermaid" || small) ? (c.pose || "idle") : "idle");
     }
     if (cimg) {
-      if (cmix) { ctx.save(); ctx.globalAlpha *= c.fade; drawSprite(cimg, k, c.ph, bob, tilt); ctx.restore(); }
-      else drawSprite(cimg, k, c.ph, bob, tilt);
+      if (cmix) { ctx.save(); ctx.globalAlpha *= c.fade; drawSprite(cimg, k, c.ph, bob, tilt, grow); ctx.restore(); }
+      else drawSprite(cimg, k, c.ph, bob, tilt, grow);
     } else if (c.kind === "poseidon") {
       const sway = Math.sin(c.ph * 0.8);
       const pg = ctx.createLinearGradient(0, 0, 0, k * 1.8);
@@ -4144,10 +4497,17 @@ const TANK_W = 4000, TANK_H = 2400;
    grows as the tank does; `lvl` is the level the piece unlocks at. That is
    what makes levelling mean something rather than just being a number. */
 const PIECES = {
-  rock:     { name: "Rock",      price: 40,   gem: 0,  kind: "decor",    cap: 6, lvl: 1 },
-  kelp:     { name: "Kelp",      price: 50,   gem: 0,  kind: "decor",    cap: 8, lvl: 1 },
-  coral:    { name: "Coral",     price: 60,   gem: 0,  kind: "decor",    cap: 6, lvl: 2 },
-  crab:     { name: "Crab",      price: 150,  gem: 0,  kind: "resident", cap: 4, lvl: 2 },
+  pebbles:  { name: "Pebbles",   price: 10,   gem: 0,  kind: "decor",    cap: 10, lvl: 1 },
+  shell:    { name: "Shell",     price: 12,   gem: 0,  kind: "decor",    cap: 8, lvl: 1 },
+  seagrass: { name: "Seagrass",  price: 15,   gem: 0,  kind: "decor",    cap: 10, lvl: 1 },
+  starfish: { name: "Starfish",  price: 18,   gem: 0,  kind: "decor",    cap: 6, lvl: 1 },
+  rock:     { name: "Rock",      price: 25,   gem: 0,  kind: "decor",    cap: 6, lvl: 1 },
+  kelp:     { name: "Kelp",      price: 30,   gem: 0,  kind: "decor",    cap: 8, lvl: 1 },
+  coral:    { name: "Coral",     price: 45,   gem: 0,  kind: "decor",    cap: 6, lvl: 1 },
+  /* 70, and at level one: the first day's tending reward on a starter tank is
+     80, and the whole promise of level one is that something ALIVE is within
+     reach the moment you open the lid. */
+  crab:     { name: "Crab",      price: 70,   gem: 0,  kind: "resident", cap: 4, lvl: 1 },
   prawn:    { name: "Prawn",     price: 120,  gem: 0,  kind: "resident", cap: 6, lvl: 3 },
   anemone:  { name: "Anemone",   price: 120,  gem: 0,  kind: "decor",    cap: 4, lvl: 3 },
   seahorse: { name: "Seahorse",  price: 300,  gem: 0,  kind: "resident", cap: 3, lvl: 4 },
@@ -4166,7 +4526,9 @@ function tankValue() {
   }
   return v;
 }
-const tankLevel = () => Math.max(1, Math.min(12, 1 + Math.floor(Math.sqrt(tankValue() / 90))));
+/* Retuned with the cheaper catalogue: filling every level-1 slot lands you
+   around level 5, which opens prawn, anemone, seahorse and the wreck. */
+const tankLevel = () => Math.max(1, Math.min(12, 1 + Math.floor(Math.sqrt(tankValue() / 60))));
 const capFor = (id) => {
   const P = PIECES[id];
   if (!P) return 0;
@@ -4174,11 +4536,43 @@ const capFor = (id) => {
 };
 const ownedOf = (id) => TANKV.items.reduce((n, it) => n + (it.t === id ? 1 : 0), 0);
 
+/* Nobody should open this and find an empty rectangle. A new tank arrives
+   furnished, free: something to look at, and something to drag around before
+   you can afford to buy anything. */
+const STARTER_TANK = [
+  { t: "rock",     x: 1500, y: 2115, s: 130 },
+  { t: "rock",     x: 2600, y: 2135, s: 105 },
+  { t: "seagrass", x: 1120, y: 2100, s: 120 },
+  { t: "seagrass", x: 1760, y: 2095, s: 110 },
+  { t: "seagrass", x: 2380, y: 2105, s: 100 },
+  { t: "seagrass", x: 2950, y: 2100, s: 115 },
+  { t: "kelp",     x: 1330, y: 2060, s: 115 },
+  { t: "kelp",     x: 2760, y: 2065, s: 105 },
+  { t: "shell",    x: 1950, y: 2175, s: 100 },
+  { t: "shell",    x: 2500, y: 2180, s: 88 },
+  { t: "starfish", x: 1650, y: 2170, s: 100 },
+  { t: "pebbles",  x: 2150, y: 2185, s: 100 },
+  { t: "pebbles",  x: 2880, y: 2190, s: 92 },
+];
+
 const TANKV = {
-  items: [], pick: "rock", removing: false, dirty: false, saveAt: 0, drag: -1,
-  zoom: 1, panning: false, downX: 0, downY: 0, moved: 0, camX: TANK_W / 2, camY: TANK_H / 2,
+  items: [], pick: "pebbles", removing: false, dirty: false, saveAt: 0, drag: -1,
+  /* Open looking AT the furniture, not at the ceiling: the floor is where
+     everything lives, so start low and close enough to read it. */
+  zoom: 1.45, panning: false, downX: 0, downY: 0, moved: 0,
+  camX: TANK_W / 2, camY: TANK_H - 620,
   viewing: "", viewName: "", loaded: false,
 };
+
+/** A brand new tank is furnished, not empty. Once only, ever. */
+function seedStarterTank() {
+  if (TANKV.items.length) return false;
+  try { if (localStorage.getItem("rr_seeded") === "1") return false; } catch (e) {}
+  TANKV.items = STARTER_TANK.map((it) => ({ ...it }));
+  try { localStorage.setItem("rr_seeded", "1"); } catch (e) {}
+  TANKV.dirty = true;
+  return true;
+}
 
 async function loadTank(who) {
   try {
@@ -4189,9 +4583,27 @@ async function loadTank(who) {
   } catch (e) {
     TANKV.items = [];
   }
+  if (!TANKV.viewing && seedStarterTank()) banner("your tank is set up", "drag a piece to move it");
   TANKV.loaded = true;
   syncTankCritters();
   paintPalette();
+  tankDailyReward();
+}
+
+/* The reason to come back tomorrow. Tending pays, and it pays more the more
+   you have built, so the tank feeds the reef and the reef feeds the tank. */
+function tankDailyReward() {
+  if (TANKV.viewing) return;
+  const now = Date.now();
+  if (now - Number(Wallet.lastTend || 0) < 20 * 60 * 60 * 1000) return;
+  const lvl = tankLevel();
+  const award = 40 + lvl * 20;
+  Wallet.pearls += award;
+  Wallet.lastTend = now;
+  Wallet.save();
+  paintPalette();
+  banner(`for tending a level ${lvl} tank`, `+${award} pearls`);
+  Snd.pickup();
 }
 
 function saveTank() {
@@ -4229,10 +4641,11 @@ function paintPalette() {
     const locked = lvl < p2.lvl;
     const have = ownedOf(id), cap = capFor(id);
     const poor = p2.gem ? Wallet.gems < p2.gem : Wallet.pearls < p2.price;
-    const cant = locked || poor || have >= cap;
-    const cost = locked ? `lvl ${p2.lvl}` : p2.gem ? `💎 ${p2.gem}` : `🫧 ${p2.price}`;
-    return `<div class="pal ${id === TANKV.pick && !TANKV.removing ? "on" : ""} ${cant ? "cant" : ""}" data-piece="${id}">
-      <b>${p2.name}</b><span>${cost}</span><span style="color:var(--dim)">${have}/${cap}</span></div>`;
+    const full = have >= cap;
+    const cant = locked || poor || full;
+    const cost = locked ? `level ${p2.lvl}` : p2.gem ? `💎 ${p2.gem}` : `🫧 ${p2.price}`;
+    return `<div class="pal ${id === TANKV.pick && !TANKV.removing ? "on" : ""} ${locked ? "lockd" : full ? "full" : poor ? "cant" : ""}" data-piece="${id}">
+      <b>${p2.name}</b><span>${cost}</span><span style="color:var(--dim)">${full ? "full" : have + "/" + cap}</span></div>`;
   }).join("");
   for (const c of box.querySelectorAll(".pal")) {
     c.addEventListener("click", () => {
@@ -4360,8 +4773,12 @@ function stepTank(dt) {
   cam.z = lerp(cam.z, cam.tz, 1 - Math.pow(0.002, dt));
   /* keep the glass in frame: pan freely, but never past the walls */
   const hw = VW / 2 / cam.z, hh = VH / 2 / cam.z;
+  /* The palette sheet covers the bottom of the screen. Without this the camera
+     cannot drop far enough to lift the sand clear of it, so the row of pieces
+     you just bought stays hidden under the buttons. */
+  const sheet = 200 / cam.z;
   const lox = Math.min(TANK_W / 2, hw), hix = Math.max(TANK_W / 2, TANK_W - hw);
-  const loy = Math.min(TANK_H / 2, hh), hiy = Math.max(TANK_H / 2, TANK_H - hh);
+  const loy = Math.min(TANK_H / 2, hh), hiy = Math.max(TANK_H / 2, TANK_H - hh + sheet);
   TANKV.camX = clamp(TANKV.camX, lox, hix);
   TANKV.camY = clamp(TANKV.camY, loy, hiy);
   cam.x = lerp(cam.x, TANKV.camX, 1 - Math.pow(0.002, dt));
@@ -4432,6 +4849,51 @@ function drawTank() {
       }
       ctx.fillStyle = "#8e3fa0";
       ctx.beginPath(); ctx.ellipse(0, k * 0.34, k * 0.3, k * 0.16, 0, 0, TAU); ctx.fill();
+    } else if (it.t === "pebbles") {
+      const seed = (it.x * 13 + it.y * 7) % 1000;
+      for (let i = 0; i < 5; i++) {
+        const a2 = seed + i * 137.5;
+        const r2 = k * (0.1 + ((a2 * 7) % 10) / 90);
+        ctx.fillStyle = i % 2 ? "#6d7c86" : "#55636c";
+        ctx.beginPath();
+        ctx.ellipse(Math.cos(a2) * k * 0.45, Math.sin(a2 * 1.7) * k * 0.16 + k * 0.3, r2, r2 * 0.72, a2, 0, TAU);
+        ctx.fill();
+      }
+    } else if (it.t === "shell") {
+      const sg = ctx.createLinearGradient(0, -k * 0.4, 0, k * 0.4);
+      sg.addColorStop(0, "#ffe8d6"); sg.addColorStop(1, "#e2a887");
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.moveTo(0, k * 0.42);
+      ctx.quadraticCurveTo(-k * 0.62, k * 0.1, -k * 0.34, -k * 0.34);
+      ctx.quadraticCurveTo(0, -k * 0.56, k * 0.34, -k * 0.34);
+      ctx.quadraticCurveTo(k * 0.62, k * 0.1, 0, k * 0.42);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(150,95,70,0.55)"; ctx.lineWidth = k * 0.035;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath(); ctx.moveTo(0, k * 0.4);
+        ctx.quadraticCurveTo(i * k * 0.16, -k * 0.05, i * k * 0.26, -k * 0.36); ctx.stroke();
+      }
+    } else if (it.t === "seagrass") {
+      ctx.strokeStyle = "#6fbf6a"; ctx.lineCap = "round";
+      for (let i = -2; i <= 2; i++) {
+        const sw = Math.sin(T * 1.1 + it.x * 0.01 + i) * k * 0.22;
+        ctx.lineWidth = k * 0.07;
+        ctx.beginPath(); ctx.moveTo(i * k * 0.13, k * 0.5);
+        ctx.quadraticCurveTo(i * k * 0.16 + sw * 0.5, 0, i * k * 0.2 + sw, -k * 0.62); ctx.stroke();
+      }
+    } else if (it.t === "starfish") {
+      ctx.fillStyle = "#ff9a4d";
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a2 = -Math.PI / 2 + (i * Math.PI) / 5;
+        const rr = i % 2 ? k * 0.2 : k * 0.52;
+        const px = Math.cos(a2) * rr, py = Math.sin(a2) * rr * 0.85 + k * 0.2;
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "rgba(255,220,160,0.7)";
+      ctx.beginPath(); ctx.ellipse(0, k * 0.2, k * 0.13, k * 0.11, 0, 0, TAU); ctx.fill();
     } else {
       /* wreck */
       ctx.fillStyle = "#6b5a45";
@@ -4498,6 +4960,7 @@ window.RR = {
   get drops() { return drops; },
   get globs() { return globs; },
   PU, Wallet, ghosts, BALL, TANKS, VIP, BOSS,
+  ARENA, SK, RING0, GAME, WORLD, skReset, skDown,
   get critters() { return critters; },
   get tank() { return TANK; },
   get game() { return GAME; },
@@ -4706,6 +5169,8 @@ WORLD.h = TANKS[TANK].h;
 /* A sport is played on a pitch: small, empty of wildlife, and legible. */
 if (ARENA.on && GAME === "football") { WORLD.w = 6400; WORLD.h = 3400; MAX_FISH = 0; MAX_FOOD = 26; }
 if (ARENA.on && GAME === "volley")   { WORLD.w = 4600; WORLD.h = 3000; MAX_FISH = 0; MAX_FOOD = 18; }
+/* A hundred fish, no plankton: nothing in this water is food. */
+if (ARENA.on && GAME === "deepstrike") { WORLD.w = 9600; WORLD.h = 4400; MAX_FISH = SK_FIELD - 1; MAX_FOOD = 0; }
 renderTankPick();
 buildScenery();
 buildCritters();
@@ -4715,10 +5180,12 @@ connect();
 renderBoard(null);
 
 let last = performance.now();
+let frameFailed = false;
 function frame(now) {
   let dt = (now - last) / 1000;
   last = now;
   if (dt > 0.05) dt = 0.05;
+  try {
   if (dt > 0) {
     if (MODE === "tank") {
       stepTank(dt);
@@ -4740,6 +5207,11 @@ function frame(now) {
     if (pushAt > 1.4) { pushAt = 0; if (G.running) push(false); }
     liveAt += dt;
     if (liveAt > 1 / LIVE_HZ) { liveAt = 0; sendLive(); }
+  }
+  } catch (e) {
+    /* Any throw in a frame used to end the animation loop for good: the game
+       froze with no way back but a reload. Report the first, keep going. */
+    if (!frameFailed) { frameFailed = true; console.error("frame error (game continues):", e); }
   }
   requestAnimationFrame(frame);
 }
