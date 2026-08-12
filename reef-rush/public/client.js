@@ -2213,7 +2213,13 @@ const GAMEDEF = GAMES[GAME];
    opening the game twice puts you in two different matches. ?room=whatever
    still overrides it, so a link shared with a friend works as before. */
 let arenaShard = "";
-if (MODE === "arena" && !params.get("room")) {
+/* Football and volleyball need two people in one room to exist at all, and a
+   random 1-in-6 shard is a poor way to arrange that. The self-collision this
+   sharding was added for is already handled elsewhere: seats dedupe by
+   playerId, the live channel drops any ghost whose id is our own, and the
+   persistent board groups by pid. So the ball games share one room. */
+const SHARDED = MODE === "arena" && GAME !== "football" && GAME !== "volley";
+if (SHARDED && !params.get("room")) {
   try {
     arenaShard = sessionStorage.getItem("rr_shard") || "";
     if (!arenaShard) {
@@ -2262,7 +2268,10 @@ function connect() {
         ).join("");
       }
       const n = ghosts.size + 1;
-      UI.arena.textContent = n > 1 ? `${n} fish in this reef · room “${room}”` : `solo reef · share ?room=${room}`;
+      /* An empty pitch reads as broken rather than as waiting, so say which it is. */
+      UI.arena.textContent = ballGame() && n < 2
+        ? `waiting for a second fish · share this link to start`
+        : n > 1 ? `${n} fish in this reef · room “${room}”` : `solo reef · share ?room=${room}`;
     }
   };
   ws.onclose = () => {
