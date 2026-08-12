@@ -1579,7 +1579,11 @@ function control(dt) {
   player.boost = (mult - 0.5) / 0.42;
   player.panic = 0;
 
-  if (IN.spit && PU.spitCd <= 0 && spit(player)) { PU.spitCd = SPIT_COOLDOWN; Snd.spit(); }
+  /* WHY THE PLAYER WAS SHRINKING. The reef's spit is bound to the same button
+     as the gun, and spit() pays for every glob out of your own mass - 8.5% a
+     shot. In Deep Strike, pulling the trigger fired a bullet AND spat a lump
+     of yourself: you were shooting yourself smaller. */
+  if (!SK_ON() && IN.spit && PU.spitCd <= 0 && spit(player)) { PU.spitCd = SPIT_COOLDOWN; Snd.spit(); }
   if (IN.net) { IN.net = false; throwNet(player); }
 
   if (wantDash && Math.random() < dt * 34) {
@@ -2182,7 +2186,21 @@ let TANK = TANKS[params.get("tank")] ? params.get("tank") : "reef";
 
 const GAME = GAMES[params.get("game")] && !GAMES[params.get("game")].soon ? params.get("game") : "survival";
 const GAMEDEF = GAMES[GAME];
-const baseRoom = (params.get("room") || "main").slice(0, 30);
+/* Every tab landed in the same room, which is why the board showed four of
+   you - they were all you. An arena room now gets a shard per browser tab, so
+   opening the game twice puts you in two different matches. ?room=whatever
+   still overrides it, so a link shared with a friend works as before. */
+let arenaShard = "";
+if (MODE === "arena" && !params.get("room")) {
+  try {
+    arenaShard = sessionStorage.getItem("rr_shard") || "";
+    if (!arenaShard) {
+      arenaShard = String(1 + Math.floor(Math.random() * 6));
+      sessionStorage.setItem("rr_shard", arenaShard);
+    }
+  } catch (e) { arenaShard = "1"; }
+}
+const baseRoom = (params.get("room") || (arenaShard ? "r" + arenaShard : "main")).slice(0, 30);
 /* arenas and reefs never share a room, so their fish never share a screen */
 const room = (MODE === "arena" ? "a-" + GAME + "-" + baseRoom : baseRoom).slice(0, 40);
 let pid = "";
@@ -3071,8 +3089,17 @@ function arenaRespawn() {
   player.dead = false;
   player.mass = SK_ON() ? SK_MASS : PLAYER_START_MASS;
   player.r = radiusOf(player.mass);
-  player.x = rnd(WORLD.w * 0.15, WORLD.w * 0.85);
-  player.y = rnd(WORLD.h * 0.25, WORLD.h * 0.8);
+  if (SK_ON() && RING0.r > 0) {
+    /* Back inside the safe water, never outside it. Arena deaths come through
+       here, and this was dropping you anywhere in the world - including into
+       the closing tide, which starts killing you the moment you arrive. */
+    const a = rnd(0, TAU), d = RING0.r * Math.sqrt(rnd(0.05, 0.62));
+    player.x = clamp(RING0.x + Math.cos(a) * d, 160, WORLD.w - 160);
+    player.y = clamp(RING0.y + Math.sin(a) * d, 160, swimFloor() - 160);
+  } else {
+    player.x = rnd(WORLD.w * 0.15, WORLD.w * 0.85);
+    player.y = rnd(WORLD.h * 0.25, WORLD.h * 0.8);
+  }
   layoutSpine(player);
   if (fishes.indexOf(player) < 0) fishes.push(player);
   G.dead = false;
