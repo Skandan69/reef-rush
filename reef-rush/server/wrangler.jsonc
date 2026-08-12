@@ -1,14 +1,32 @@
 {
-  // Fill in database_id after running:  wrangler d1 create reef-rush
   "name": "reef-rush",
   "main": "worker.ts",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["nodejs_compat"],
+
+  /* The game's static files. Serving them from the same Worker means the
+     page and its WebSocket share an origin, so there is no CORS hop and no
+     second host to keep in step. They live in their own folder rather than
+     beside the source: pointing the assets root at a parent directory
+     publishes everything in it, and .assetsignore does not filter it. */
+  "assets": {
+    "directory": "../public",
+    "binding": "ASSETS",
+    "not_found_handling": "none"
+  },
+
   "durable_objects": {
     "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
   },
+  /* new_sqlite_classes, not new_classes: the SQLite backend is the only one
+     available on the Workers Free plan, and it is the recommended default. */
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+
   "d1_databases": [
-    { "binding": "DB", "database_name": "reef-rush", "database_id": "PASTE_THE_ID_WRANGLER_PRINTS" }
+    {
+      "binding": "DB",
+      "database_name": "reef-rush",
+      "database_id": "19c0836d-8bf1-4eda-a6ec-be2f547b6b06"
+    }
   ]
 }
