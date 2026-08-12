@@ -2256,13 +2256,6 @@ function connect() {
     if (msg && msg.t === "L") { handleLive(msg); return; }
     if (msg && msg.type === "state" && msg.view && msg.view.board) {
       renderBoard(msg.view.board);
-      /* Remember how many people the room says are here. `connected` counts
-         sockets and is the truer number; the roster is the fallback. This is
-         not time-decayed, because the room only broadcasts on join and on
-         action: two players sitting still send nothing, and an expiring count
-         would call them alone and never start the match. ws.onclose clears it,
-         which is the only moment we actually stop knowing. */
-      ARENA.roster = Math.max(Number(msg.connected) || 0, Array.isArray(msg.view.board) ? msg.view.board.length : 0);
       if (msg.view.you && msg.view.you.best > G.best) G.best = msg.view.you.best;
       if (msg.view.teams) {
         UI.teamBar.innerHTML = msg.view.teams.map((t) =>
@@ -2288,8 +2281,6 @@ function connect() {
   };
   ws.onclose = () => {
     wsReady = false;
-    /* We no longer know who is in the room, so stop claiming to. */
-    ARENA.roster = 0;
     retry = Math.min(retry + 1, 6);
     setTimeout(connect, 900 * retry);
   };
@@ -3096,13 +3087,21 @@ function drawGhostTags() {
 const MATCH_MS = 5 * 60 * 1000;
 const PLAY_MS = 4.5 * 60 * 1000;
 
-const ARENA = { on: false, entered: false, matchId: -1, live: false, left: 0, joined: false, submitted: false, respawnAt: 0, roster: 0 };
+const ARENA = { on: false, entered: false, matchId: -1, live: false, left: 0, joined: false, submitted: false, respawnAt: 0 };
 
 /* How many people are in this room. The roster the room broadcasts is the
    authority; ghosts lag, because a player whose tab is in the background
    broadcasts slowly and would be counted as absent. */
 function roomHeads() {
-  return Math.max(ghosts.size + 1, ARENA.roster || 0);
+  /* Ghosts, and only ghosts. They are the one honest measure of who is playing:
+     a ghost exists because that player broadcast a position in the last six
+     seconds, and stepGhosts drops it when they stop. The room's own numbers
+     look tempting and are not usable here -- seats persist deliberately so a
+     dropped player can reclaim one, and a socket outlives a closed tab, so
+     both keep counting people who have gone. A player whose tab is hidden
+     stops broadcasting and stops counting, which is correct: they are not
+     playing either. */
+  return ghosts.size + 1;
 }
 
 function arenaClock() {
