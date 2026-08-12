@@ -11,7 +11,7 @@
 
 import type { Env } from "./env";
 import { Room } from "./room";
-import { listTanks, readBoard, readLadder, readTank, readVip, saveTank, submitArena, submitRun } from "./ranks";
+import { listTanks, readBoard, readLadder, readTank, readVip, saveTank, submitArena, submitRun, topTanks } from "./ranks";
 
 export { Room };
 
@@ -83,7 +83,18 @@ export default {
         return saveTank(env, body);
       }
       if (url.pathname === "/api/tank" && request.method === "GET") {
-        return readTank(env, (url.searchParams.get("pid") ?? "").slice(0, 64));
+        return readTank(
+          env,
+          (url.searchParams.get("pid") ?? "").slice(0, 64),
+          (url.searchParams.get("by") ?? "").slice(0, 64),
+        );
+      }
+      if (url.pathname === "/api/tanks/top" && request.method === "GET") {
+        return topTanks(
+          env,
+          Number(url.searchParams.get("limit") ?? "10"),
+          (url.searchParams.get("pid") ?? "").slice(0, 64),
+        );
       }
       if (url.pathname === "/api/tanks" && request.method === "GET") {
         return listTanks(env, (url.searchParams.get("pid") ?? "").slice(0, 64));
