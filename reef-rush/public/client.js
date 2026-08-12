@@ -3934,6 +3934,15 @@ for (const [key, file] of [["poseidon", "poseidon.png"], ["mermaid", "mermaid.pn
   img.onload = () => { ART[key] = img; };
 }
 
+/* Painted tank furniture. Same contract as the characters: optional, and a
+   missing file simply means the piece does not draw. */
+const DECOR = {};
+for (const id of ["gorgonian", "garden", "clam", "lamp", "chest", "statue"]) {
+  const img = new Image();
+  img.src = `art/${id}.png`;
+  img.onload = () => { DECOR[id] = img; };
+}
+
 /* Painted pose sets. Each is optional: a missing file just falls back to
    the single painted image, and a missing pose set falls back to the
    code-drawn character, so the game never breaks on a 404. */
@@ -4716,8 +4725,36 @@ const PIECES = {
   anemone:  { name: "Anemone",   price: 120,  gem: 0,  kind: "decor",    cap: 4, lvl: 3 },
   seahorse: { name: "Seahorse",  price: 300,  gem: 0,  kind: "resident", cap: 3, lvl: 4 },
   wreck:    { name: "Wreck",     price: 400,  gem: 0,  kind: "decor",    cap: 1, lvl: 5 },
+  /* The stonework and the flowers: things a tank keeper builds for the look of
+     the place rather than for the fish. Priced so a well-tended tank can afford
+     a colonnade without the reef pieces losing their meaning. */
+  bloomrose:  { name: "Rose Bloom",   price: 55,  gem: 0, kind: "decor", cap: 10, lvl: 1 },
+  bloomgold:  { name: "Gold Bloom",   price: 55,  gem: 0, kind: "decor", cap: 10, lvl: 1 },
+  bloomviolet:{ name: "Violet Bloom", price: 55,  gem: 0, kind: "decor", cap: 10, lvl: 1 },
+  urn:        { name: "Amphora",      price: 160, gem: 0, kind: "decor", cap: 5,  lvl: 2 },
+  pillar:     { name: "Marble Pillar",price: 220, gem: 0, kind: "decor", cap: 8,  lvl: 2 },
+  lantern:    { name: "Lantern",      price: 260, gem: 0, kind: "decor", cap: 5,  lvl: 3 },
+  arch:       { name: "Marble Arch",  price: 520, gem: 0, kind: "decor", cap: 2,  lvl: 4 },
+  bubbles:    { name: "Bubble Vent",  price: 90,  gem: 0, kind: "decor", cap: 6,  lvl: 2 },
+  sponge:     { name: "Tube Sponges", price: 70,  gem: 0, kind: "decor", cap: 8,  lvl: 1 },
+  fan:        { name: "Sea Fan",      price: 110, gem: 0, kind: "decor", cap: 6,  lvl: 2 },
+  crystal:    { name: "Glow Crystals",price: 190, gem: 0, kind: "decor", cap: 6,  lvl: 3 },
+  driftwood:  { name: "Driftwood",    price: 80,  gem: 0, kind: "decor", cap: 4,  lvl: 1 },
+  mosaic:     { name: "Mosaic Tile",  price: 65,  gem: 0, kind: "decor", cap: 14, lvl: 1 },
+  jelly:      { name: "Moon Jelly",   price: 210, gem: 0, kind: "decor", cap: 8,  lvl: 3 },
+  /* Painted pieces, to sit alongside the painted characters. Each falls back
+     to nothing if its file is missing, exactly as the characters do. */
+  gorgonian:  { name: "Gorgonian",    price: 130, gem: 0, kind: "decor", cap: 8,  lvl: 2 },
+  garden:     { name: "Anemone Garden",price: 150,gem: 0, kind: "decor", cap: 8,  lvl: 2 },
+  clam:       { name: "Pearl Clam",   price: 280, gem: 0, kind: "decor", cap: 4,  lvl: 3 },
+  lamp:       { name: "Gold Lamp",    price: 340, gem: 0, kind: "decor", cap: 5,  lvl: 4 },
+  chest:      { name: "Treasure Chest",price: 620,gem: 0, kind: "decor", cap: 2,  lvl: 5 },
+  statue:     { name: "Nereid Statue",price: 780, gem: 0, kind: "decor", cap: 3,  lvl: 6 },
+  garland:    { name: "Flower Garland",price: 140,gem: 0, kind: "decor", cap: 8,  lvl: 2 },
+  vine:       { name: "Hanging Vine", price: 100, gem: 0, kind: "decor", cap: 10, lvl: 2 },
+  bust:       { name: "Marble Bust",  price: 300, gem: 0, kind: "decor", cap: 8,  lvl: 4 },
   octopus:  { name: "Octopus",   price: 900,  gem: 0,  kind: "resident", cap: 2, lvl: 6 },
-  mermaid:  { name: "Mermaid",   price: 0,    gem: 2,  kind: "resident", cap: 1, lvl: 8 },
+  mermaid:  { name: "Mermaid",   price: 0,    gem: 2,  kind: "resident", cap: 4, lvl: 8 },
   poseidon: { name: "Poseidon",  price: 0,    gem: 40, kind: "resident", cap: 1, lvl: 10 },
 };
 
@@ -4834,6 +4871,58 @@ function syncTankCritters() {
       dir: Math.random() < 0.5 ? -1 : 1, drift: rnd(6, 22),
     });
   }
+}
+
+/**
+ * The gallery: other people's tanks, most visited first.
+ *
+ * Visits are the only ranking here on purpose. Sorting by tank *value* would
+ * rank whoever spent the most, which is a leaderboard for the rich; sorting by
+ * visits ranks whatever people actually wanted to look at.
+ */
+let GALLERY = [];
+function renderGallery(rows) {
+  GALLERY = Array.isArray(rows) ? rows : [];
+  const box = el("galleryList");
+  if (!box) return;
+  const here = TANKV.viewing || pid;
+  if (!GALLERY.length) {
+    box.innerHTML = `<div id="galleryNote">Nobody has built one yet. Be first.</div>`;
+    return;
+  }
+  box.innerHTML = GALLERY.map((r, i) => {
+    const nm = String(r.name || "A fish").replace(/[<>&]/g, "");
+    const bl = String(r.blurb || `${r.items || 0} pieces`).replace(/[<>&]/g, "");
+    return `<div class="gcard ${r.pid === here ? "on" : ""}" data-pid="${r.pid}">
+      <span class="rank">${i + 1}</span>
+      <span class="who"><b>${nm}</b><span>${bl}</span></span>
+      <span class="vis">${Number(r.visits || 0).toLocaleString()} 👁</span>
+    </div>`;
+  }).join("");
+  for (const card of box.querySelectorAll(".gcard")) {
+    card.addEventListener("click", () => {
+      const who = card.dataset.pid;
+      if (!who || who === (TANKV.viewing || pid)) return;
+      TANKV.viewing = who === pid ? "" : who;
+      loadTank(who);
+      renderGallery(GALLERY);
+      /* keep the address bar honest, so the view is shareable */
+      try {
+        const q = new URLSearchParams(location.search);
+        if (TANKV.viewing) q.set("visit", TANKV.viewing); else q.delete("visit");
+        history.replaceState(null, "", `${location.pathname}?${q}`);
+      } catch (e) {}
+    });
+  }
+}
+
+/** Pull the board. Silent on failure: offline simply means no gallery. */
+async function refreshGallery() {
+  try {
+    const res = await apiFetch(`/api/tanks/top?limit=10&pid=${encodeURIComponent(pid)}`);
+    const d = await res.json();
+    if (d && Array.isArray(d.rows)) renderGallery(d.rows);
+  } catch (e) {}
 }
 
 function paintPalette() {
@@ -5025,22 +5114,90 @@ function drawTank() {
       ctx.quadraticCurveTo(k * 0.55, -k * 0.35, k * 0.6, k * 0.4);
       ctx.closePath(); ctx.fill();
     } else if (it.t === "coral") {
-      ctx.strokeStyle = "#ff7b6b";
-      ctx.lineWidth = k * 0.16; ctx.lineCap = "round";
-      for (let i = -2; i <= 2; i++) {
+      /* A colony, not a bundle of sticks: branches fork, taper, and are drawn
+         back-to-front so the far ones sit behind in cooler, dimmer colour. */
+      const hue = (it.x * 7) % 3;
+      const warm = hue === 0 ? ["#ff9f7a", "#ff6f61", "#c9424a"]
+                 : hue === 1 ? ["#ffb1c6", "#ef6d9c", "#b13f77"]
+                 : ["#ffcf8a", "#f59b45", "#bf6420"];
+      const branch = (x0, y0, ang, len, wide, depth, tint) => {
+        if (depth === 0 || wide < k * 0.012) return;
+        const sway = Math.sin(T * 0.7 + it.x * 0.01 + depth) * 0.06;
+        const x1 = x0 + Math.cos(ang + sway) * len;
+        const y1 = y0 + Math.sin(ang + sway) * len;
+        ctx.strokeStyle = tint;
+        ctx.lineWidth = wide; ctx.lineCap = "round";
         ctx.beginPath();
-        ctx.moveTo(0, k * 0.45);
-        ctx.quadraticCurveTo(i * k * 0.3, 0, i * k * 0.42, -k * 0.55);
+        ctx.moveTo(x0, y0);
+        ctx.quadraticCurveTo((x0 + x1) / 2 + Math.cos(ang + 1.6) * len * 0.16, (y0 + y1) / 2, x1, y1);
         ctx.stroke();
+        /* a tip knob, which is what makes it read as living coral */
+        if (depth === 1) {
+          ctx.fillStyle = tint;
+          ctx.beginPath(); ctx.arc(x1, y1, wide * 0.62, 0, TAU); ctx.fill();
+        }
+        branch(x1, y1, ang - 0.42 - (depth % 2) * 0.1, len * 0.74, wide * 0.68, depth - 1, tint);
+        branch(x1, y1, ang + 0.40 + (depth % 3) * 0.08, len * 0.7, wide * 0.66, depth - 1, tint);
+      };
+      /* back layer, cooler and thinner, then the front colony over it */
+      for (let i = -1; i <= 1; i++) {
+        branch(i * k * 0.2, k * 0.45, -Math.PI / 2 + i * 0.3, k * 0.3, k * 0.1, 3, warm[2]);
       }
+      for (let i = -1; i <= 1; i++) {
+        branch(i * k * 0.26, k * 0.48, -Math.PI / 2 + i * 0.34, k * 0.34, k * 0.13, 4, i === 0 ? warm[1] : warm[0]);
+      }
+      /* the rubble it grows out of */
+      ctx.fillStyle = "rgba(120,110,105,0.5)";
+      ctx.beginPath(); ctx.ellipse(0, k * 0.5, k * 0.4, k * 0.1, 0, 0, TAU); ctx.fill();
     } else if (it.t === "kelp") {
-      ctx.strokeStyle = "#2f7d4f";
-      ctx.lineWidth = k * 0.16; ctx.lineCap = "round";
-      const sw = Math.sin(T * 0.8 + it.x) * k * 0.3;
-      ctx.beginPath();
-      ctx.moveTo(0, k * 0.6);
-      ctx.quadraticCurveTo(sw * 0.5, -k * 0.2, sw, -k * 1.1);
-      ctx.stroke();
+      /* A stipe with leaves, not a green bar. The whole frond travels on one
+         slow wave; each leaf hangs off it and lags a little, which is what
+         gives kelp its heavy, underwater drag. */
+      const H = k * 2.6;
+      const phase = T * 0.55 + it.x * 0.008;
+      const bend = (u) => Math.sin(phase + u * 2.1) * k * 0.34 * u;   /* u: 0 root, 1 tip */
+      const pts = [];
+      for (let i = 0; i <= 10; i++) {
+        const u = i / 10;
+        pts.push([bend(u), k * 0.5 - H * u]);
+      }
+      /* the stipe, tapering */
+      for (let i = 0; i < pts.length - 1; i++) {
+        const u = i / (pts.length - 1);
+        ctx.strokeStyle = `rgb(${Math.round(38 + u * 40)},${Math.round(92 + u * 62)},${Math.round(58 + u * 30)})`;
+        ctx.lineWidth = k * (0.085 - u * 0.05);
+        ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(pts[i][0], pts[i][1]); ctx.lineTo(pts[i + 1][0], pts[i + 1][1]); ctx.stroke();
+      }
+      /* leaves, alternating sides */
+      for (let i = 2; i < 10; i++) {
+        const u = i / 10;
+        const [bx, by] = pts[i];
+        const side = i % 2 ? 1 : -1;
+        const lag = Math.sin(phase - 0.5 + u * 2.1) * 0.5;
+        const len = k * (0.62 - u * 0.24);
+        const g2 = ctx.createLinearGradient(bx, by, bx + side * len, by + k * 0.1);
+        g2.addColorStop(0, "#2b6b45");
+        g2.addColorStop(1, u > 0.6 ? "#8fd07f" : "#4e9c5c");
+        ctx.fillStyle = g2;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.quadraticCurveTo(bx + side * len * 0.5, by - k * 0.16 + lag * k * 0.1,
+                             bx + side * len, by + k * 0.06 + lag * k * 0.14);
+        ctx.quadraticCurveTo(bx + side * len * 0.45, by + k * 0.12 + lag * k * 0.06, bx, by + k * 0.05);
+        ctx.closePath(); ctx.fill();
+        /* the little gas bladder that holds kelp up */
+        if (i % 3 === 0) {
+          ctx.fillStyle = "rgba(190,225,150,0.75)";
+          ctx.beginPath(); ctx.ellipse(bx + side * k * 0.08, by - k * 0.02, k * 0.045, k * 0.03, 0, 0, TAU); ctx.fill();
+        }
+      }
+      /* the holdfast gripping the sand */
+      ctx.strokeStyle = "#2a5c3c"; ctx.lineWidth = k * 0.035;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath(); ctx.moveTo(0, k * 0.5);
+        ctx.quadraticCurveTo(i * k * 0.08, k * 0.54, i * k * 0.14, k * 0.5); ctx.stroke();
+      }
     } else if (it.t === "anemone") {
       ctx.strokeStyle = "#c86bd6";
       ctx.lineWidth = k * 0.1; ctx.lineCap = "round";
@@ -5053,6 +5210,396 @@ function drawTank() {
       }
       ctx.fillStyle = "#8e3fa0";
       ctx.beginPath(); ctx.ellipse(0, k * 0.34, k * 0.3, k * 0.16, 0, 0, TAU); ctx.fill();
+    } else if (it.t === "pillar" || it.t === "arch") {
+      /* One marble routine: a pillar is the arch's leg without the span. */
+      const marble = (x0, x1) => {
+        const g2 = ctx.createLinearGradient(x0, 0, x1, 0);
+        g2.addColorStop(0, "#9fabb8"); g2.addColorStop(0.28, "#f6f8fb");
+        g2.addColorStop(0.62, "#dfe6ee"); g2.addColorStop(1, "#94a2b0");
+        return g2;
+      };
+      const leg = (cx, h, w) => {
+        ctx.fillStyle = marble(cx - w, cx + w);
+        /* base mouldings, shaft, capital */
+        ctx.fillRect(cx - w * 1.6, k * 0.5 - k * 0.16, w * 3.2, k * 0.16);
+        ctx.fillRect(cx - w * 1.34, k * 0.5 - k * 0.29, w * 2.68, k * 0.13);
+        ctx.fillRect(cx - w, k * 0.5 - h, w * 2, h - k * 0.29);
+        ctx.fillRect(cx - w * 1.5, k * 0.5 - h - k * 0.19, w * 3, k * 0.19);
+        ctx.fillRect(cx - w * 1.2, k * 0.5 - h - k * 0.30, w * 2.4, k * 0.11);
+        /* flutes */
+        ctx.strokeStyle = "rgba(110,132,155,0.34)"; ctx.lineWidth = k * 0.022;
+        for (let i = -2; i <= 2; i++) {
+          ctx.beginPath();
+          ctx.moveTo(cx + i * w * 0.36, k * 0.5 - h + k * 0.04);
+          ctx.lineTo(cx + i * w * 0.36, k * 0.5 - k * 0.32);
+          ctx.stroke();
+        }
+        /* a couple of veins, so it reads as stone and not as plastic */
+        ctx.strokeStyle = "rgba(120,140,165,0.28)"; ctx.lineWidth = k * 0.015;
+        ctx.beginPath();
+        ctx.moveTo(cx - w * 0.5, k * 0.5 - h * 0.9);
+        ctx.quadraticCurveTo(cx + w * 0.2, k * 0.5 - h * 0.55, cx - w * 0.3, k * 0.5 - h * 0.2);
+        ctx.stroke();
+      };
+      if (it.t === "pillar") {
+        leg(0, k * 2.5, k * 0.34);
+      } else {
+        const span = k * 1.5, h = k * 2.0, w = k * 0.26;
+        leg(-span, h, w); leg(span, h, w);
+        ctx.strokeStyle = marble(-span, span);
+        ctx.lineWidth = k * 0.34;
+        ctx.beginPath();
+        ctx.arc(0, k * 0.5 - h - k * 0.24, span, Math.PI, 0);
+        ctx.stroke();
+        /* keystone */
+        ctx.fillStyle = marble(-k * 0.2, k * 0.2);
+        ctx.fillRect(-k * 0.16, k * 0.5 - h - k * 0.24 - span - k * 0.2, k * 0.32, k * 0.34);
+      }
+    } else if (DECOR[it.t]) {
+      /* Painted furniture: sized by height so wide and tall pieces both land
+         on the sand, with a soft contact shadow so nothing appears to hover. */
+      const img = DECOR[it.t];
+      const h = k * 2.0;
+      const w = h * (img.width / img.height);
+      ctx.fillStyle = "rgba(10,40,55,0.28)";
+      ctx.beginPath(); ctx.ellipse(0, k * 0.5, w * 0.42, k * 0.1, 0, 0, TAU); ctx.fill();
+      ctx.drawImage(img, -w / 2, k * 0.5 - h, w, h);
+    } else if (it.t === "garland") {
+      /* A swag: a rope hung between two points, sagging under its own weight,
+         with the flowers threaded along it. It sways from the ends inward, as
+         a hung thing does, rather than rocking as a rigid bar. */
+      const span = k * 1.5, sag = k * 0.72;
+      const swing = Math.sin(T * 0.6 + it.x * 0.015) * 0.05;
+      const at = (u) => {                      /* u from -1 to 1 across the swag */
+        const x = u * span;
+        const y = sag * (1 - u * u) * (1 + swing * u);
+        return [x, y - sag * 0.4];
+      };
+      ctx.strokeStyle = "#4a8b52"; ctx.lineWidth = k * 0.05; ctx.lineCap = "round";
+      ctx.beginPath();
+      for (let i = 0; i <= 24; i++) {
+        const [x, y] = at(-1 + (i / 24) * 2);
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+      /* leaves along the rope */
+      for (let i = 0; i <= 22; i++) {
+        const u = -1 + (i / 22) * 2;
+        const [x, y] = at(u);
+        const side = i % 2 ? 1 : -1;
+        ctx.fillStyle = i % 3 ? "#4f9b58" : "#3d7d47";
+        ctx.beginPath();
+        ctx.ellipse(x, y + k * 0.03, k * 0.09, k * 0.038, side * 0.7 + u * 0.5, 0, TAU);
+        ctx.fill();
+      }
+      /* blossoms, three colours alternating down the swag */
+      const pals = [["#ff8fae", "#ff5c86"], ["#ffd66e", "#ffb01f"], ["#c79bff", "#9a5cf0"]];
+      for (let i = 0; i <= 9; i++) {
+        const u = -0.94 + (i / 9) * 1.88;
+        const [x, y] = at(u);
+        const pal = pals[i % 3];
+        const wob = Math.sin(T * 1.1 + i) * k * 0.012;
+        for (let q = 0; q < 5; q++) {
+          const a2 = (q / 5) * TAU;
+          ctx.fillStyle = q % 2 ? pal[0] : pal[1];
+          ctx.beginPath();
+          ctx.ellipse(x + Math.cos(a2) * k * 0.055 + wob, y + Math.sin(a2) * k * 0.055 + k * 0.05,
+                      k * 0.05, k * 0.034, a2, 0, TAU);
+          ctx.fill();
+        }
+        ctx.fillStyle = "#fff3d0";
+        ctx.beginPath(); ctx.arc(x + wob, y + k * 0.05, k * 0.026, 0, TAU); ctx.fill();
+      }
+    } else if (it.t === "vine") {
+      /* Trails downward from where it is hung, so it is placed at the top of
+         whatever it hangs from rather than standing on the sand. */
+      const L = k * 2.2;
+      const drift = (u) => Math.sin(T * 0.5 + it.x * 0.02 + u * 2.4) * k * 0.2 * u;
+      ctx.strokeStyle = "#43844d"; ctx.lineWidth = k * 0.035; ctx.lineCap = "round";
+      ctx.beginPath();
+      for (let i = 0; i <= 20; i++) {
+        const u = i / 20;
+        const x = drift(u), y = -k * 0.4 + L * u;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+      for (let i = 2; i <= 19; i++) {
+        const u = i / 20;
+        const x = drift(u), y = -k * 0.4 + L * u;
+        const side = i % 2 ? 1 : -1;
+        ctx.fillStyle = i % 3 ? "#4f9b58" : "#5fae66";
+        ctx.beginPath();
+        ctx.ellipse(x + side * k * 0.05, y, k * 0.075, k * 0.032, side * 0.6, 0, TAU);
+        ctx.fill();
+        if (i % 4 === 0) {
+          const pal = [["#ff8fae", "#ff5c86"], ["#ffd66e", "#ffb01f"], ["#c79bff", "#9a5cf0"]][(i / 4) % 3];
+          for (let q = 0; q < 5; q++) {
+            const a2 = (q / 5) * TAU;
+            ctx.fillStyle = q % 2 ? pal[0] : pal[1];
+            ctx.beginPath();
+            ctx.ellipse(x + Math.cos(a2) * k * 0.042, y + Math.sin(a2) * k * 0.042,
+                        k * 0.04, k * 0.026, a2, 0, TAU);
+            ctx.fill();
+          }
+          ctx.fillStyle = "#fff3d0";
+          ctx.beginPath(); ctx.arc(x, y, k * 0.02, 0, TAU); ctx.fill();
+        }
+      }
+    } else if (it.t === "bust") {
+      /* Meant for the top of a pillar. Carved rather than blobbed: a stepped
+         plinth, a shoulder line broken by drapery, and enough shadow under the
+         brow and jaw to read as a face at the size a capital actually gives. */
+      const marble = (x0, x1) => {
+        const g2 = ctx.createLinearGradient(x0, 0, x1, 0);
+        g2.addColorStop(0, "#8e9aa8"); g2.addColorStop(0.3, "#f7f9fc");
+        g2.addColorStop(0.62, "#dde5ed"); g2.addColorStop(1, "#8a97a5");
+        return g2;
+      };
+      ctx.fillStyle = marble(-k * 0.4, k * 0.4);
+      /* stepped plinth */
+      ctx.fillRect(-k * 0.36, k * 0.34, k * 0.72, k * 0.16);
+      ctx.fillRect(-k * 0.3, k * 0.22, k * 0.6, k * 0.13);
+      ctx.fillRect(-k * 0.22, k * 0.14, k * 0.44, k * 0.09);
+      /* torso */
+      ctx.beginPath();
+      ctx.moveTo(-k * 0.26, k * 0.16);
+      ctx.quadraticCurveTo(-k * 0.24, -k * 0.1, -k * 0.12, -k * 0.2);
+      ctx.lineTo(k * 0.12, -k * 0.2);
+      ctx.quadraticCurveTo(k * 0.24, -k * 0.1, k * 0.26, k * 0.16);
+      ctx.closePath(); ctx.fill();
+      /* drapery folds across the chest */
+      ctx.strokeStyle = "rgba(120,140,162,0.45)"; ctx.lineWidth = k * 0.018;
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(-k * 0.2 + i * k * 0.02, k * 0.12 - i * k * 0.03);
+        ctx.quadraticCurveTo(0, k * 0.02 - i * k * 0.04, k * 0.2 - i * k * 0.02, k * 0.12 - i * k * 0.03);
+        ctx.stroke();
+      }
+      /* neck, then head */
+      ctx.fillStyle = marble(-k * 0.1, k * 0.1);
+      ctx.fillRect(-k * 0.06, -k * 0.26, k * 0.12, k * 0.1);
+      ctx.fillStyle = marble(-k * 0.16, k * 0.16);
+      ctx.beginPath(); ctx.ellipse(0, -k * 0.37, k * 0.125, k * 0.155, 0, 0, TAU); ctx.fill();
+      /* hair mass, swept back */
+      ctx.fillStyle = "rgba(148,164,182,0.75)";
+      ctx.beginPath(); ctx.ellipse(0, -k * 0.45, k * 0.155, k * 0.115, 0, Math.PI, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-k * 0.14, -k * 0.33, k * 0.045, k * 0.1, 0.35, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(k * 0.14, -k * 0.33, k * 0.045, k * 0.1, -0.35, 0, TAU); ctx.fill();
+      /* brow shadow, nose and jaw: three marks, which is all a face needs here */
+      ctx.strokeStyle = "rgba(110,128,148,0.5)"; ctx.lineWidth = k * 0.014; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(-k * 0.06, -k * 0.4); ctx.lineTo(k * 0.06, -k * 0.4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -k * 0.39); ctx.lineTo(0, -k * 0.33); ctx.stroke();
+      ctx.strokeStyle = "rgba(110,128,148,0.3)";
+      ctx.beginPath(); ctx.arc(0, -k * 0.34, k * 0.1, 0.5, 2.6); ctx.stroke();
+      /* weathering, to match the statues */
+      ctx.fillStyle = "rgba(122,158,110,0.35)";
+      ctx.beginPath(); ctx.ellipse(-k * 0.2, k * 0.4, k * 0.11, k * 0.035, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(k * 0.12, k * 0.26, k * 0.07, k * 0.026, 0, 0, TAU); ctx.fill();
+    } else if (it.t === "sponge") {
+      /* barrel sponges: fat tubes with a dark mouth, back ones dimmer */
+      const cols = [["#c96f9a", "#9c4a72"], ["#e0895f", "#a95c3c"], ["#7fb6c9", "#4d7f92"]];
+      for (let i = 0; i < 5; i++) {
+        const c2 = cols[(i + Math.floor(it.x)) % 3];
+        const back = i < 2;
+        const bx = (i - 2) * k * 0.24 + ((i * 29) % 7 - 3) * k * 0.02;
+        const h = k * (back ? 0.42 : 0.62) * (0.8 + ((i * 17) % 6) / 12);
+        const w = k * (back ? 0.11 : 0.14);
+        const g2 = ctx.createLinearGradient(bx - w, 0, bx + w, 0);
+        g2.addColorStop(0, c2[1]); g2.addColorStop(0.45, c2[0]); g2.addColorStop(1, c2[1]);
+        ctx.globalAlpha = back ? 0.72 : 1;
+        ctx.fillStyle = g2;
+        ctx.beginPath();
+        ctx.moveTo(bx - w, k * 0.5);
+        ctx.quadraticCurveTo(bx - w * 1.15, k * 0.5 - h * 0.6, bx - w * 0.85, k * 0.5 - h);
+        ctx.lineTo(bx + w * 0.85, k * 0.5 - h);
+        ctx.quadraticCurveTo(bx + w * 1.15, k * 0.5 - h * 0.6, bx + w, k * 0.5);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "rgba(30,20,35,0.55)";
+        ctx.beginPath(); ctx.ellipse(bx, k * 0.5 - h, w * 0.85, w * 0.3, 0, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    } else if (it.t === "fan") {
+      /* a gorgonian fan: a lattice on a plane, swaying as one sheet */
+      const sway = Math.sin(T * 0.6 + it.x * 0.01) * 0.09;
+      ctx.save();
+      ctx.translate(0, k * 0.5);
+      ctx.rotate(sway);
+      const tint = ((it.x * 5) % 2) < 1 ? "#e2568d" : "#f0913f";
+      ctx.strokeStyle = tint; ctx.lineCap = "round";
+      ctx.lineWidth = k * 0.055;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -k * 0.22); ctx.stroke();
+      for (let i = -4; i <= 4; i++) {
+        const a2 = -Math.PI / 2 + i * 0.18;
+        const len = k * (0.78 - Math.abs(i) * 0.07);
+        ctx.lineWidth = k * 0.032;
+        ctx.beginPath();
+        ctx.moveTo(0, -k * 0.2);
+        ctx.quadraticCurveTo(Math.cos(a2) * len * 0.5, -k * 0.2 + Math.sin(a2) * len * 0.5,
+                             Math.cos(a2) * len, -k * 0.2 + Math.sin(a2) * len);
+        ctx.stroke();
+      }
+      /* cross-weave, which is what makes it a fan rather than a hand */
+      ctx.lineWidth = k * 0.016;
+      ctx.globalAlpha = 0.75;
+      for (let r = 0.34; r < 0.8; r += 0.15) {
+        ctx.beginPath();
+        ctx.arc(0, -k * 0.2, k * r, -Math.PI / 2 - 0.75, -Math.PI / 2 + 0.75);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    } else if (it.t === "crystal") {
+      const pulse = 0.72 + Math.sin(T * 1.3 + it.x * 0.02) * 0.16;
+      const glow = ctx.createRadialGradient(0, k * 0.1, 0, 0, k * 0.1, k * 0.95);
+      glow.addColorStop(0, `rgba(130,220,255,${0.4 * pulse})`);
+      glow.addColorStop(1, "rgba(90,180,255,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(0, k * 0.1, k * 0.95, 0, TAU); ctx.fill();
+      for (let i = 0; i < 5; i++) {
+        const bx = (i - 2) * k * 0.17, h = k * (0.34 + ((i * 23) % 7) / 12), w = k * 0.075;
+        const g2 = ctx.createLinearGradient(bx, k * 0.5, bx, k * 0.5 - h);
+        g2.addColorStop(0, "rgba(70,150,200,0.95)");
+        g2.addColorStop(1, `rgba(190,245,255,${pulse})`);
+        ctx.fillStyle = g2;
+        ctx.beginPath();
+        ctx.moveTo(bx - w, k * 0.5); ctx.lineTo(bx, k * 0.5 - h);
+        ctx.lineTo(bx + w, k * 0.5); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgba(235,252,255,0.5)"; ctx.lineWidth = k * 0.012;
+        ctx.beginPath(); ctx.moveTo(bx, k * 0.5 - h); ctx.lineTo(bx - w * 0.2, k * 0.5); ctx.stroke();
+      }
+    } else if (it.t === "driftwood") {
+      const g2 = ctx.createLinearGradient(0, -k * 0.2, 0, k * 0.5);
+      g2.addColorStop(0, "#9a7c5e"); g2.addColorStop(1, "#5d472f");
+      ctx.strokeStyle = g2; ctx.lineCap = "round";
+      ctx.lineWidth = k * 0.15;
+      ctx.beginPath();
+      ctx.moveTo(-k * 0.7, k * 0.46);
+      ctx.quadraticCurveTo(-k * 0.1, k * 0.2, k * 0.72, k * 0.4);
+      ctx.stroke();
+      ctx.lineWidth = k * 0.075;
+      ctx.beginPath(); ctx.moveTo(-k * 0.2, k * 0.33); ctx.quadraticCurveTo(-k * 0.1, -k * 0.05, k * 0.16, -k * 0.16); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(k * 0.3, k * 0.36); ctx.quadraticCurveTo(k * 0.5, k * 0.08, k * 0.44, -k * 0.1); ctx.stroke();
+      /* grain */
+      ctx.strokeStyle = "rgba(40,28,16,0.35)"; ctx.lineWidth = k * 0.014;
+      ctx.beginPath(); ctx.moveTo(-k * 0.6, k * 0.44); ctx.quadraticCurveTo(-k * 0.1, k * 0.2, k * 0.62, k * 0.39); ctx.stroke();
+    } else if (it.t === "mosaic") {
+      /* a patch of tiled floor, so the sand is not one flat colour everywhere */
+      const cols = ["#2f7f8c", "#3c9aa6", "#d9c9a2", "#c2a76f", "#7fb6b0"];
+      for (let r = 0; r < 3; r++) {
+        for (let c2 = 0; c2 < 6; c2++) {
+          const seed = (it.x + r * 31 + c2 * 17) | 0;
+          ctx.fillStyle = cols[seed % 5];
+          ctx.globalAlpha = 0.85;
+          ctx.fillRect(-k * 0.6 + c2 * k * 0.2 + 1, k * 0.24 + r * k * 0.1 + 1, k * 0.19, k * 0.09);
+        }
+      }
+      ctx.globalAlpha = 1;
+    } else if (it.t === "jelly") {
+      /* it hangs in the water rather than sitting on the floor */
+      const bob = Math.sin(T * 0.85 + it.x * 0.02) * k * 0.16;
+      const squash = 1 + Math.sin(T * 1.7 + it.x * 0.02) * 0.09;
+      ctx.save();
+      ctx.translate(0, bob - k * 0.5);
+      const g2 = ctx.createRadialGradient(0, 0, k * 0.05, 0, 0, k * 0.5);
+      g2.addColorStop(0, "rgba(255,225,245,0.85)");
+      g2.addColorStop(0.6, "rgba(216,160,235,0.5)");
+      g2.addColorStop(1, "rgba(150,110,220,0.12)");
+      ctx.fillStyle = g2;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, k * 0.42 * squash, k * 0.34 / squash, 0, Math.PI, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(255,220,250,0.5)"; ctx.lineWidth = k * 0.022; ctx.lineCap = "round";
+      for (let i = -3; i <= 3; i++) {
+        const wob = Math.sin(T * 1.9 + i * 0.8 + it.x * 0.02) * k * 0.09;
+        ctx.beginPath();
+        ctx.moveTo(i * k * 0.1, 0);
+        ctx.quadraticCurveTo(i * k * 0.1 + wob, k * 0.3, i * k * 0.09 + wob * 1.6, k * 0.62);
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (it.t === "bubbles") {
+      /* A vent in the sand. The column gives the tank something moving that is
+         not a fish, and carries the eye up through all that empty water. */
+      ctx.fillStyle = "rgba(90,110,120,0.85)";
+      ctx.beginPath(); ctx.ellipse(0, k * 0.46, k * 0.22, k * 0.08, 0, 0, TAU); ctx.fill();
+      for (let i = 0; i < 14; i++) {
+        /* each bubble on its own loop, so the column never pulses in step */
+        const t2 = (T * (0.16 + (i % 5) * 0.02) + i * 0.41) % 1;
+        const yy = k * 0.42 - t2 * k * 6.2;
+        const wob = Math.sin(t2 * 9 + i) * k * 0.12 * t2;
+        const rr = k * (0.035 + (i % 4) * 0.012) * (1 + t2 * 0.5);
+        ctx.strokeStyle = `rgba(215,245,255,${0.5 * (1 - t2)})`;
+        ctx.lineWidth = k * 0.012;
+        ctx.beginPath(); ctx.arc(wob, yy, rr, 0, TAU); ctx.stroke();
+        ctx.fillStyle = `rgba(235,250,255,${0.16 * (1 - t2)})`;
+        ctx.fill();
+      }
+    } else if (it.t === "urn") {
+      const g2 = ctx.createLinearGradient(-k * 0.4, 0, k * 0.4, 0);
+      g2.addColorStop(0, "#8a5a3c"); g2.addColorStop(0.35, "#d99b62");
+      g2.addColorStop(0.7, "#c07f4c"); g2.addColorStop(1, "#7d4f34");
+      ctx.fillStyle = g2;
+      ctx.beginPath();
+      ctx.moveTo(-k * 0.14, k * 0.5);
+      ctx.quadraticCurveTo(-k * 0.52, k * 0.16, -k * 0.34, -k * 0.22);
+      ctx.quadraticCurveTo(-k * 0.24, -k * 0.44, -k * 0.16, -k * 0.5);
+      ctx.lineTo(k * 0.16, -k * 0.5);
+      ctx.quadraticCurveTo(k * 0.24, -k * 0.44, k * 0.34, -k * 0.22);
+      ctx.quadraticCurveTo(k * 0.52, k * 0.16, k * 0.14, k * 0.5);
+      ctx.closePath(); ctx.fill();
+      /* handles and a painted band */
+      ctx.strokeStyle = "#a9713f"; ctx.lineWidth = k * 0.06; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.arc(-k * 0.32, -k * 0.24, k * 0.13, -0.6, 2.2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(k * 0.32, -k * 0.24, k * 0.13, Math.PI - 2.2, Math.PI + 0.6); ctx.stroke();
+      ctx.strokeStyle = "rgba(60,35,20,0.5)"; ctx.lineWidth = k * 0.035;
+      ctx.beginPath(); ctx.moveTo(-k * 0.36, -k * 0.06); ctx.lineTo(k * 0.36, -k * 0.06); ctx.stroke();
+    } else if (it.t === "lantern") {
+      const flick = 0.82 + Math.sin(T * 2.6 + it.x * 0.01) * 0.1 + Math.sin(T * 7.3) * 0.04;
+      ctx.strokeStyle = "#3c4a52"; ctx.lineWidth = k * 0.07; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(0, k * 0.5); ctx.lineTo(0, -k * 0.5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -k * 0.5); ctx.quadraticCurveTo(k * 0.2, -k * 0.62, k * 0.3, -k * 0.5); ctx.stroke();
+      /* the glow first, so the glass sits inside it */
+      const glow = ctx.createRadialGradient(k * 0.3, -k * 0.3, 0, k * 0.3, -k * 0.3, k * 0.85 * flick);
+      glow.addColorStop(0, `rgba(255,214,140,${0.55 * flick})`);
+      glow.addColorStop(1, "rgba(255,190,110,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(k * 0.3, -k * 0.3, k * 0.85 * flick, 0, TAU); ctx.fill();
+      ctx.fillStyle = `rgba(255,226,168,${0.85 * flick})`;
+      ctx.beginPath();
+      ctx.moveTo(k * 0.16, -k * 0.44); ctx.lineTo(k * 0.44, -k * 0.44);
+      ctx.lineTo(k * 0.40, -k * 0.14); ctx.lineTo(k * 0.20, -k * 0.14);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#2f3b42"; ctx.lineWidth = k * 0.035;
+      ctx.stroke();
+    } else if (it.t === "bloomrose" || it.t === "bloomgold" || it.t === "bloomviolet") {
+      const pal = it.t === "bloomrose"
+        ? ["#ff8fae", "#ff5c86", "#ffd7e2"]
+        : it.t === "bloomgold"
+        ? ["#ffd66e", "#ffb01f", "#fff0c2"]
+        : ["#c79bff", "#9a5cf0", "#e8dcff"];
+      const sway = Math.sin(T * 0.9 + it.x * 0.02) * k * 0.12;
+      ctx.strokeStyle = "#4f9b58"; ctx.lineWidth = k * 0.055; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(0, k * 0.5);
+      ctx.quadraticCurveTo(sway * 0.4, k * 0.05, sway, -k * 0.34);
+      ctx.stroke();
+      /* a pair of leaves on the stem */
+      ctx.fillStyle = "#4f9b58";
+      ctx.beginPath(); ctx.ellipse(sway * 0.3 - k * 0.16, k * 0.14, k * 0.16, k * 0.07, -0.5, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(sway * 0.4 + k * 0.15, k * 0.0, k * 0.15, k * 0.065, 0.5, 0, TAU); ctx.fill();
+      /* petals */
+      ctx.save();
+      ctx.translate(sway, -k * 0.34);
+      for (let i = 0; i < 6; i++) {
+        const a2 = (i / 6) * TAU + Math.sin(T * 0.7 + i) * 0.04;
+        ctx.fillStyle = i % 2 ? pal[0] : pal[1];
+        ctx.beginPath();
+        ctx.ellipse(Math.cos(a2) * k * 0.15, Math.sin(a2) * k * 0.15, k * 0.13, k * 0.085, a2, 0, TAU);
+        ctx.fill();
+      }
+      ctx.fillStyle = pal[2];
+      ctx.beginPath(); ctx.arc(0, 0, k * 0.075, 0, TAU); ctx.fill();
+      ctx.restore();
     } else if (it.t === "pebbles") {
       const seed = (it.x * 13 + it.y * 7) % 1000;
       for (let i = 0; i < 5; i++) {
@@ -5079,12 +5626,34 @@ function drawTank() {
         ctx.quadraticCurveTo(i * k * 0.16, -k * 0.05, i * k * 0.26, -k * 0.36); ctx.stroke();
       }
     } else if (it.t === "seagrass") {
-      ctx.strokeStyle = "#6fbf6a"; ctx.lineCap = "round";
-      for (let i = -2; i <= 2; i++) {
-        const sw = Math.sin(T * 1.1 + it.x * 0.01 + i) * k * 0.22;
-        ctx.lineWidth = k * 0.07;
-        ctx.beginPath(); ctx.moveTo(i * k * 0.13, k * 0.5);
-        ctx.quadraticCurveTo(i * k * 0.16 + sw * 0.5, 0, i * k * 0.2 + sw, -k * 0.62); ctx.stroke();
+      /* Real blades: wide at the root, tapering to a point, each on its own
+         phase so the clump ripples across rather than waving as one object. */
+      const blades = 9;
+      for (let i = 0; i < blades; i++) {
+        const t2 = i / (blades - 1) - 0.5;
+        const ph = T * 1.05 + it.x * 0.012 + i * 0.7;
+        const lean = Math.sin(ph) * k * 0.26 + t2 * k * 0.1;
+        const h = k * (0.5 + ((i * 37) % 10) / 22);
+        const w = k * (0.055 + ((i * 13) % 5) / 90);
+        const rootX = t2 * k * 0.42;
+        const g2 = ctx.createLinearGradient(0, k * 0.5, 0, k * 0.5 - h);
+        /* darker at the base, sunlit at the tip */
+        g2.addColorStop(0, i % 3 === 0 ? "#2f6f43" : "#357c4a");
+        g2.addColorStop(1, i % 3 === 0 ? "#7fd07a" : "#96dc86");
+        ctx.fillStyle = g2;
+        ctx.beginPath();
+        ctx.moveTo(rootX - w, k * 0.5);
+        ctx.quadraticCurveTo(rootX - w * 0.5 + lean * 0.5, k * 0.5 - h * 0.55, rootX + lean, k * 0.5 - h);
+        ctx.quadraticCurveTo(rootX + w * 0.5 + lean * 0.5, k * 0.5 - h * 0.55, rootX + w, k * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        /* a centre rib catching the light */
+        ctx.strokeStyle = "rgba(255,255,255,0.16)";
+        ctx.lineWidth = k * 0.012;
+        ctx.beginPath();
+        ctx.moveTo(rootX, k * 0.5);
+        ctx.quadraticCurveTo(rootX + lean * 0.5, k * 0.5 - h * 0.55, rootX + lean, k * 0.5 - h * 0.96);
+        ctx.stroke();
       }
     } else if (it.t === "starfish") {
       ctx.fillStyle = "#ff9a4d";
@@ -5315,6 +5884,7 @@ if (MODE === "tank") {
   UI.start.classList.add("hide");
   el("tankUI").classList.remove("hide");
   paintPalette();
+  refreshGallery();
   TANKV.viewing = params.get("visit") && params.get("visit") !== pid ? params.get("visit") : "";
   loadTank(TANKV.viewing || pid);
   el("tankSell").addEventListener("click", () => {
@@ -5423,3 +5993,4 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 document.addEventListener("visibilitychange", () => { last = performance.now(); });
+
