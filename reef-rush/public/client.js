@@ -16,6 +16,10 @@ const WORLD = { w: 16800, h: 6200 };  /* replaced at boot by the chosen tank */
 let MAX_FISH = 22;
 let MAX_FOOD = 150;
 const PLAYER_START_MASS = 48;
+/* Deep Strike: everyone in the water is this size, you included. The board
+   showed ninety-nine fish at 260 and you at 48, in ninety-fifth place, before
+   a shot was fired. */
+const SK_MASS = 260;
 const GROWTH = 0.34;          /* fraction of a meal that becomes your own mass */
 const AI_MAX_MASS = 6500;      /* bots stop growing here */
 /* The hard ceiling on a player. Past this the camera cannot pull back far
@@ -1374,6 +1378,18 @@ function populate(px, py, ring, pm) {
     spawnFish(px, py, ring, pm);
     const f = fishes[fishes.length - 1];
     if (fishes.length > before) {
+      /* Deep Strike fills the ARENA, not a ring around the player. */
+      if (SK_ON()) {
+        f.x = rnd(200, WORLD.w - 200);
+        f.y = rnd(200, swimFloor() - 200);
+        if (Math.hypot(f.x - px, f.y - py) < 700) {
+          const a2 = rnd(0, TAU);
+          f.x = clamp(px + Math.cos(a2) * 900, 200, WORLD.w - 200);
+          f.y = clamp(py + Math.sin(a2) * 900, 200, swimFloor() - 200);
+        }
+        layoutSpine(f);
+        continue;
+      }
       /* scatter the opening cast across the whole visible disc, not its rim */
       const a = rnd(0, TAU), d = ring * Math.sqrt(rnd(0.05, 2.4));
       f.x = clamp(px + Math.cos(a) * d, 60, WORLD.w - 60);
@@ -1393,7 +1409,8 @@ function newRun(hard) {
   buildHoles();
   resetBoss();
   PLAYER_SKIN = Wallet.skinDef();
-  player = makeFish("player", PLAYER_START_MASS, rnd(WORLD.w * 0.25, WORLD.w * 0.75), rnd(WORLD.h * 0.3, WORLD.h * 0.62), PLAYER_SKIN);
+  player = makeFish("player", SK_ON() ? SK_MASS : PLAYER_START_MASS,
+    rnd(WORLD.w * 0.25, WORLD.w * 0.75), rnd(WORLD.h * 0.3, WORLD.h * 0.62), PLAYER_SKIN);
   player.wob = 1;
   fishes.push(player);
   sprinkleFood(MAX_FOOD, player.x, player.y, Math.hypot(VW, VH) / 2 / zoomFor(player.r));
@@ -1715,6 +1732,13 @@ function step(dt) {
   for (let i = fishes.length - 1; i >= 0; i--) {
     const f = fishes[i];
     if (f === player || f.kind === "ghost") continue;
+    /* THE bug behind "they are all in one place" and "they are all shooting at
+       me". The reef teleports any fish that drifts far away back beside you, so
+       the ocean always feels busy as you swim through it. Right for a scrolling
+       reef, badly wrong for a fixed arena: however well the hundred were
+       scattered at the whistle, seconds later every one of them had been
+       dragged onto your position, and every one was in range to shoot. */
+    if (SK_ON()) continue;
     if (Math.hypot(f.x - player.x, f.y - player.y) <= far) continue;
     /* Deleting a fish that swam off screen threw away everything it had
        eaten, which is why the ocean never developed any big ones. Move it
@@ -2101,6 +2125,10 @@ function refreshBoard() {
   const myIndex = entries.findIndex((e) => e.you);
   if (myIndex >= 7) top.push(entries[myIndex]);
 
+  if (SK_ON()) {
+    const t = el("boardTitle");
+    if (t) t.textContent = `Still swimming ${SK.left} · kills`;
+  }
   UI.ranks.innerHTML = top.map((e) => {
     const i = entries.indexOf(e);
     let nm = e.name.replace(/[<>&]/g, "");
@@ -2110,6 +2138,11 @@ function refreshBoard() {
     const col = e.bot ? "#6f8fa0" : teamCol(e.team);
     const tag = "";
     const kd = e.kills ? `<span class="sc" style="color:#ff9b8c">${e.kills}☠</span>` : "";
+    /* In Deep Strike the number that matters is kills, so it is the number
+       shown. Printing size beside it was noise: every fish is the same size. */
+    if (SK_ON()) {
+      return `<li class="${e.you ? "me" : ""}"><span class="rk" style="color:${col}">${i + 1}</span>${chip}<span class="nm">${nm}</span><span class="sc" style="color:#ff9b8c">${e.kills || 0}</span></li>`;
+    }
     return `<li class="${e.you ? "me" : ""}"><span class="rk" style="color:${col}">${i + 1}</span>${chip}<span class="nm">${nm}${tag}</span>${kd}<span class="sc">${e.mass.toLocaleString()}</span></li>`;
   }).join("");
 }
@@ -3028,7 +3061,7 @@ function startArenaRound() {
 
 function arenaRespawn() {
   player.dead = false;
-  player.mass = PLAYER_START_MASS;
+  player.mass = SK_ON() ? SK_MASS : PLAYER_START_MASS;
   player.r = radiusOf(player.mass);
   player.x = rnd(WORLD.w * 0.15, WORLD.w * 0.85);
   player.y = rnd(WORLD.h * 0.25, WORLD.h * 0.8);
@@ -3144,9 +3177,12 @@ function stepSafeWater(dt) {
   const circling = ARENA.on && (GAME === "lastfish" || GAME === "tidepool" || GAME === "deepstrike");
   if (!circling || !ARENA.live) return;
   const into = 1 - ARENA.left / (PLAY_MS / 1000);
-  const wide = Math.max(WORLD.w, WORLD.h) * 0.62;
+  /* Deep Strike wants a circle you can SEE from the first minute. At 0.62 of
+     a 9,600-wide arena the ring was 5,952 across - wider than the water, so it
+     never showed and never appeared to close. */
+  const wide = SK_ON() ? 3400 : Math.max(WORLD.w, WORLD.h) * 0.62;
   /* Closing Waves keeps a bigger pocket and closes more slowly */
-  const end = GAME === "tidepool" ? 1600 : 700;
+  const end = GAME === "tidepool" ? 1600 : SK_ON() ? 520 : 700;
   const pace = GAME === "tidepool" ? clamp(into * 0.82, 0, 1) : clamp(into, 0, 1);
   RING0.r = lerp(wide, end, pace);
   if (!G.running || G.dead) return;
@@ -3348,7 +3384,7 @@ function stepStrike(dt) {
       if (d2 < td) { td = d2; tx = o.x; ty = o.y; }
     }
     const pd = playing ? Math.hypot(player.x - f.x, player.y - f.y) : 1e9;
-    if (pd < 900 && SK.heat < 6 && Math.random() < 0.3) { SK.heat++; f.onYou = 1.6; td = pd; tx = player.x; ty = player.y; }
+    if (pd < 700 && SK.heat < 3 && Math.random() < 0.16) { SK.heat++; f.onYou = 1.6; td = pd; tx = player.x; ty = player.y; }
     if (td > 1150) continue;
     skFire(f, Math.atan2(ty - f.y, tx - f.x) + rnd(-0.2, 0.2));
   }
@@ -3418,8 +3454,15 @@ function stepStrike(dt) {
   const into = clamp(1 - ARENA.left / (PLAY_MS / 1000), 0, 1);
   const target = Math.round(lerp(SK_FIELD, 1, into * into));
   if (target > 6 && fishes.length < target - 1 && Math.random() < dt * 6) {
-    const a = rnd(0, TAU), d = RING0.r * rnd(0.75, 0.98);
-    spawnFish(RING0.x + Math.cos(a) * d, RING0.y + Math.sin(a) * d, 60, 260);
+    const a = rnd(0, TAU), d = RING0.r * rnd(0.55, 0.95);
+    spawnFish(RING0.x + Math.cos(a) * d, RING0.y + Math.sin(a) * d, 60, SK_MASS);
+    const f = fishes[fishes.length - 1];
+    if (f) {
+      const a2 = rnd(0, TAU), d2 = RING0.r * Math.sqrt(rnd(0.1, 0.92));
+      f.x = clamp(RING0.x + Math.cos(a2) * d2, 200, WORLD.w - 200);
+      f.y = clamp(RING0.y + Math.sin(a2) * d2, 200, swimFloor() - 200);
+      layoutSpine(f);
+    }
   }
   SK.left = skStanding();
   if (!SK.won && !SK.out && SK.left <= 1 && G.running) {
