@@ -3463,7 +3463,7 @@ function stepStrike(dt) {
     if (mustering) continue;
     f.skCd = (f.skCd === undefined ? rnd(0.8, 4.0) : f.skCd) - dt;
     if (f.skCd > 0) continue;
-    f.skCd = rnd(2.6, 7.0);
+    f.skCd = rnd(3.4, 9.0);
     /* Most of them are busy with each other. Without this cap all ninety-nine
        picked the nearest target — always you — and you died in six seconds. */
     let tx = 0, ty = 0, td = 1e9;
@@ -3475,7 +3475,12 @@ function stepStrike(dt) {
     }
     const pd = playing ? Math.hypot(player.x - f.x, player.y - f.y) : 1e9;
     if (pd < 700 && SK.heat < 3 && Math.random() < 0.16) { SK.heat++; f.onYou = 1.6; td = pd; tx = player.x; ty = player.y; }
-    if (td > 1150) continue;
+    /* Measured over a real match: flat at 97 for forty-five seconds, then
+       97 -> 44 in the next sixty. The cause was the bigger arena - at 1,150
+       units of range, in water where the median gap between fish is 4,600,
+       almost nobody could see anybody. Then the circle squeezed them all into
+       range at once and it became a massacre. */
+    if (td > 2600) continue;
     skFire(f, Math.atan2(ty - f.y, tx - f.x) + rnd(-0.2, 0.2));
   }
 
@@ -3543,6 +3548,9 @@ function stepStrike(dt) {
      "last one standing" would mean nothing. */
   /* Nobody is replaced once the fight starts. The count only ever falls -
      anything else is not last one standing, it is a treadmill. */
+  /* Nothing should ever read a negative health bar. This was fixed once and
+     then lost when a later build was taken from the repo without it. */
+  SK.hp = clamp(SK.hp, 0, SK_MAX_HP);
   SK.left = skStanding();
   if (!SK.won && !SK.out && SK.left <= 1 && G.running) {
     SK.won = true; G.score += 2000;
