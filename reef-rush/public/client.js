@@ -2268,10 +2268,15 @@ function connect() {
         ).join("");
       }
       const n = ghosts.size + 1;
-      /* An empty pitch reads as broken rather than as waiting, so say which it is. */
-      UI.arena.textContent = ballGame() && n < 2
+      /* An empty pitch reads as broken rather than as waiting, so say which it is.
+         Count from the room roster rather than from ghosts: a ghost only appears
+         once that player broadcasts a position, and a backgrounded tab broadcasts
+         slowly, which would call two people on a pitch "waiting". A ball game has
+         no AI fish, so every row on the roster is a person. */
+      const here = ballGame() && Array.isArray(msg.view.board) ? Math.max(n, msg.view.board.length) : n;
+      UI.arena.textContent = ballGame() && here < 2
         ? `waiting for a second fish · share this link to start`
-        : n > 1 ? `${n} fish in this reef · room “${room}”` : `solo reef · share ?room=${room}`;
+        : here > 1 ? `${here} fish in this reef · room “${room}”` : `solo reef · share ?room=${room}`;
     }
   };
   ws.onclose = () => {
