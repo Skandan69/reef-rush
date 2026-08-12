@@ -1718,7 +1718,13 @@ function step(dt) {
     }
   }
 
-  if (G.running && !G.dead) control(dt);
+  /* Being out has to mean out. skDown() sets SK.out and puts YOU ARE OUT on
+     the screen, but nothing ever stopped the controls, so an eliminated fish
+     carried on steering around the match. */
+  if (SK_ON() && SK.out) {
+    player.sp *= 1 - Math.min(1, 2.4 * dt);          /* coast to a halt */
+    player.boost = 0;
+  } else if (G.running && !G.dead) control(dt);
   else if (!G.dead) steerAI(player, dt);
 
   for (let i = 0; i < fishes.length; i++) {
@@ -3457,7 +3463,7 @@ function stepStrike(dt) {
     if (mustering) continue;
     f.skCd = (f.skCd === undefined ? rnd(0.8, 4.0) : f.skCd) - dt;
     if (f.skCd > 0) continue;
-    f.skCd = rnd(1.5, 4.2);
+    f.skCd = rnd(2.6, 7.0);
     /* Most of them are busy with each other. Without this cap all ninety-nine
        picked the nearest target — always you — and you died in six seconds. */
     let tx = 0, ty = 0, td = 1e9;
@@ -3535,20 +3541,8 @@ function stepStrike(dt) {
      of the match was an empty ocean. The population is steered rather than
      merely drained. Reinforcements stop once the field is genuinely thin, or
      "last one standing" would mean nothing. */
-  const fightFor = PLAY_MS / 1000 - SK_MUSTER;
-  const into = clamp((elapsed - SK_MUSTER) / fightFor, 0, 1);
-  const target = Math.round(lerp(SK_FIELD, 1, into * into));
-  if (target > 6 && fishes.length < target - 1 && Math.random() < dt * 6) {
-    const a = rnd(0, TAU), d = RING0.r * rnd(0.55, 0.95);
-    spawnFish(RING0.x + Math.cos(a) * d, RING0.y + Math.sin(a) * d, 60, SK_MASS);
-    const f = fishes[fishes.length - 1];
-    if (f) {
-      const a2 = rnd(0, TAU), d2 = RING0.r * Math.sqrt(rnd(0.1, 0.92));
-      f.x = clamp(RING0.x + Math.cos(a2) * d2, 200, WORLD.w - 200);
-      f.y = clamp(RING0.y + Math.sin(a2) * d2, 200, swimFloor() - 200);
-      layoutSpine(f);
-    }
-  }
+  /* Nobody is replaced once the fight starts. The count only ever falls -
+     anything else is not last one standing, it is a treadmill. */
   SK.left = skStanding();
   if (!SK.won && !SK.out && SK.left <= 1 && G.running) {
     SK.won = true; G.score += 2000;
