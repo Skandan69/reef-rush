@@ -3482,6 +3482,16 @@ function stepStrike(dt) {
     if (f === player || f.kind === "ghost" || f.dead) continue;
     skArm(f);
     f.hurt = Math.max(0, (f.hurt || 0) - dt * 2);
+    /* the closing water kills everything, not just you */
+    if (RING0.r > 0) {
+      const dr = Math.hypot(f.x - RING0.x, f.y - RING0.y);
+      if (dr > RING0.r) {
+        skHurt(f, 17 * dt, false);
+        if (f.dead) continue;
+        /* and it drives them back in, rather than drowning them stupidly */
+        f.ta = Math.atan2(RING0.y - f.y, RING0.x - f.x);
+      }
+    }
     if (f.netted > 0) { skHurt(f, SK_SHOCK_DPS * dt, false); continue; }
     if (mustering) continue;
     f.skCd = (f.skCd === undefined ? rnd(0.8, 4.0) : f.skCd) - dt;
