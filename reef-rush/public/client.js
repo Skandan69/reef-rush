@@ -4806,57 +4806,57 @@ const tankMaxItems = () => Math.min(400, Math.round(200 * tankRoom()));
    progression one — two temples is a skyline, four is a mess — and it is set
    high enough that every tank in the gallery is buildable by anyone. */
 const PIECES = {
-  pebbles:  { name: "Pebbles",   price: 10,   gem: 0,  kind: "decor",    cap: 30 },
-  shell:    { name: "Shell",     price: 12,   gem: 0,  kind: "decor",    cap: 24 },
-  seagrass: { name: "Seagrass",  price: 15,   gem: 0,  kind: "decor",    cap: 30 },
-  starfish: { name: "Starfish",  price: 18,   gem: 0,  kind: "decor",    cap: 20 },
-  rock:     { name: "Rock",      price: 25,   gem: 0,  kind: "decor",    cap: 16 },
-  kelp:     { name: "Kelp",      price: 30,   gem: 0,  kind: "decor",    cap: 30 },
-  coral:    { name: "Coral",     price: 45,   gem: 0,  kind: "decor",    cap: 20 },
+  pebbles:  { name: "Pebbles",   price: 10,   gem: 0,  kind: "decor",    cap: 30, size: 128 },
+  shell:    { name: "Shell",     price: 12,   gem: 0,  kind: "decor",    cap: 24, size: 113 },
+  seagrass: { name: "Seagrass",  price: 15,   gem: 0,  kind: "decor",    cap: 30, size: 167 },
+  starfish: { name: "Starfish",  price: 18,   gem: 0,  kind: "decor",    cap: 20, size: 114 },
+  rock:     { name: "Rock",      price: 25,   gem: 0,  kind: "decor",    cap: 16, size: 210 },
+  kelp:     { name: "Kelp",      price: 30,   gem: 0,  kind: "decor",    cap: 30, size: 370 },
+  coral:    { name: "Coral",     price: 45,   gem: 0,  kind: "decor",    cap: 20, size: 180 },
   /* 70: the first day's tending reward on a starter tank is 80, so something
      ALIVE is within reach the moment you open the lid. */
-  crab:     { name: "Crab",      price: 70,   gem: 0,  kind: "resident", cap: 10 },
-  prawn:    { name: "Prawn",     price: 120,  gem: 0,  kind: "resident", cap: 14 },
-  anemone:  { name: "Anemone",   price: 120,  gem: 0,  kind: "decor",    cap: 16 },
-  seahorse: { name: "Seahorse",  price: 300,  gem: 0,  kind: "resident", cap: 10 },
-  wreck:    { name: "Wreck",     price: 400,  gem: 0,  kind: "decor",    cap: 3 },
+  crab:     { name: "Crab",      price: 70,   gem: 0,  kind: "resident", cap: 10, size: 112 },
+  prawn:    { name: "Prawn",     price: 120,  gem: 0,  kind: "resident", cap: 14, size: 94 },
+  anemone:  { name: "Anemone",   price: 120,  gem: 0,  kind: "decor",    cap: 16, size: 145 },
+  seahorse: { name: "Seahorse",  price: 300,  gem: 0,  kind: "resident", cap: 10, size: 108 },
+  wreck:    { name: "Wreck",     price: 400,  gem: 0,  kind: "decor",    cap: 3, size: 260 },
   /* The stonework and the flowers: things a tank keeper builds for the look of
      the place rather than for the fish. Priced so a well-tended tank can afford
      a colonnade without the reef pieces losing their meaning. */
-  bloomrose:  { name: "Rose Bloom",   price: 55,  gem: 0, kind: "decor", cap: 26 },
-  bloomgold:  { name: "Gold Bloom",   price: 55,  gem: 0, kind: "decor", cap: 26 },
-  bloomviolet:{ name: "Violet Bloom", price: 55,  gem: 0, kind: "decor", cap: 26 },
-  urn:        { name: "Amphora",      price: 160, gem: 0, kind: "decor", cap: 14 },
-  pillar:     { name: "Marble Pillar",price: 220, gem: 0, kind: "decor", cap: 20 },
-  lantern:    { name: "Lantern",      price: 260, gem: 0, kind: "decor", cap: 12 },
-  arch:       { name: "Marble Arch",  price: 520, gem: 0, kind: "decor", cap: 5 },
-  bubbles:    { name: "Bubble Vent",  price: 90,  gem: 0, kind: "decor", cap: 14 },
-  sponge:     { name: "Tube Sponges", price: 70,  gem: 0, kind: "decor", cap: 20 },
-  fan:        { name: "Sea Fan",      price: 110, gem: 0, kind: "decor", cap: 16 },
-  crystal:    { name: "Glow Crystals",price: 190, gem: 0, kind: "decor", cap: 16 },
-  driftwood:  { name: "Driftwood",    price: 80,  gem: 0, kind: "decor", cap: 12 },
-  mosaic:     { name: "Mosaic Tile",  price: 65,  gem: 0, kind: "decor", cap: 34 },
-  jelly:      { name: "Moon Jelly",   price: 210, gem: 0, kind: "decor", cap: 24 },
+  bloomrose:  { name: "Rose Bloom",   price: 55,  gem: 0, kind: "decor", cap: 26, size: 123 },
+  bloomgold:  { name: "Gold Bloom",   price: 55,  gem: 0, kind: "decor", cap: 26, size: 133 },
+  bloomviolet:{ name: "Violet Bloom", price: 55,  gem: 0, kind: "decor", cap: 26, size: 137 },
+  urn:        { name: "Amphora",      price: 160, gem: 0, kind: "decor", cap: 14, size: 150 },
+  pillar:     { name: "Marble Pillar",price: 220, gem: 0, kind: "decor", cap: 20, size: 282 },
+  lantern:    { name: "Lantern",      price: 260, gem: 0, kind: "decor", cap: 12, size: 180 },
+  arch:       { name: "Marble Arch",  price: 520, gem: 0, kind: "decor", cap: 5, size: 330 },
+  bubbles:    { name: "Bubble Vent",  price: 90,  gem: 0, kind: "decor", cap: 14, size: 132 },
+  sponge:     { name: "Tube Sponges", price: 70,  gem: 0, kind: "decor", cap: 20, size: 159 },
+  fan:        { name: "Sea Fan",      price: 110, gem: 0, kind: "decor", cap: 16, size: 170 },
+  crystal:    { name: "Glow Crystals",price: 190, gem: 0, kind: "decor", cap: 16, size: 163 },
+  driftwood:  { name: "Driftwood",    price: 80,  gem: 0, kind: "decor", cap: 12, size: 165 },
+  mosaic:     { name: "Mosaic Tile",  price: 65,  gem: 0, kind: "decor", cap: 34, size: 152 },
+  jelly:      { name: "Moon Jelly",   price: 210, gem: 0, kind: "decor", cap: 24, size: 135 },
   /* Painted pieces, to sit alongside the painted characters. Each falls back
      to nothing if its file is missing, exactly as the characters do. */
-  gorgonian:  { name: "Gorgonian",    price: 130, gem: 0, kind: "decor", cap: 20 },
-  garden:     { name: "Anemone Garden",price: 150,gem: 0, kind: "decor", cap: 20 },
-  clam:       { name: "Pearl Clam",   price: 280, gem: 0, kind: "decor", cap: 10 },
-  lamp:       { name: "Gold Lamp",    price: 340, gem: 0, kind: "decor", cap: 12 },
-  chest:      { name: "Treasure Chest",price: 620,gem: 0, kind: "decor", cap: 5 },
-  statue:     { name: "Nereid Statue",price: 780, gem: 0, kind: "decor", cap: 8 },
-  garland:    { name: "Flower Garland",price: 140,gem: 0, kind: "decor", cap: 20 },
-  vine:       { name: "Hanging Vine", price: 100, gem: 0, kind: "decor", cap: 24 },
-  bust:       { name: "Marble Bust",  price: 300, gem: 0, kind: "decor", cap: 20 },
+  gorgonian:  { name: "Gorgonian",    price: 130, gem: 0, kind: "decor", cap: 20, size: 166 },
+  garden:     { name: "Anemone Garden",price: 150,gem: 0, kind: "decor", cap: 20, size: 152 },
+  clam:       { name: "Pearl Clam",   price: 280, gem: 0, kind: "decor", cap: 10, size: 150 },
+  lamp:       { name: "Gold Lamp",    price: 340, gem: 0, kind: "decor", cap: 12, size: 250 },
+  chest:      { name: "Treasure Chest",price: 620,gem: 0, kind: "decor", cap: 5, size: 210 },
+  statue:     { name: "Nereid Statue",price: 780, gem: 0, kind: "decor", cap: 8, size: 100 },
+  garland:    { name: "Flower Garland",price: 140,gem: 0, kind: "decor", cap: 20, size: 210 },
+  vine:       { name: "Hanging Vine", price: 100, gem: 0, kind: "decor", cap: 24, size: 140 },
+  bust:       { name: "Marble Bust",  price: 300, gem: 0, kind: "decor", cap: 20, size: 150 },
   /* Backdrops. Big, cheap per square metre, and meant for the empty water a
      tank has above the reef: one whole facade does what thirty small pieces
      cannot. Still the lowest caps in the catalogue: these are backdrops, and
      past a handful they stop being a horizon and start being a wall. */
-  temple:     { name: "Temple",       price: 900, gem: 0, kind: "decor", cap: 4 },
-  ruin:       { name: "Ruined Row",   price: 640, gem: 0, kind: "decor", cap: 6 },
-  octopus:  { name: "Octopus",   price: 900,  gem: 0,  kind: "resident", cap: 5 },
-  mermaid:  { name: "Mermaid",   price: 0,    gem: 2,  kind: "resident", cap: 8 },
-  poseidon: { name: "Poseidon",  price: 0,    gem: 40, kind: "resident", cap: 1 },
+  temple:     { name: "Temple",       price: 900, gem: 0, kind: "decor", cap: 4, size: 400 },
+  ruin:       { name: "Ruined Row",   price: 640, gem: 0, kind: "decor", cap: 6, size: 370 },
+  octopus:  { name: "Octopus",   price: 900,  gem: 0,  kind: "resident", cap: 5, size: 100 },
+  mermaid:  { name: "Mermaid",   price: 0,    gem: 2,  kind: "resident", cap: 8, size: 96 },
+  poseidon: { name: "Poseidon",  price: 0,    gem: 40, kind: "resident", cap: 1, size: 76 },
 };
 
 /** The tank levels on what you have actually built into it. */
@@ -4887,6 +4887,28 @@ const capFor = (id) => {
 };
 const ownedOf = (id) => TANKV.items.reduce((n, it) => n + (it.t === id ? 1 : 0), 0);
 
+/* Limits on how big a single piece may be drawn. 420 is the server's clamp. */
+const PIECE_MIN = 50, PIECE_MAX = 420;
+
+/**
+ * The size a piece arrives at.
+ *
+ * Everything used to be placed at 100 — the bottom of the range — while the
+ * four tanks in the gallery run from 100 to 420, with kelp at 370 and a temple
+ * at 400. That is why a built tank never looked like the ones it was being
+ * shown: not the choice of pieces, the scale of them. Each `size` here is the
+ * median that piece is used at across those four tanks, so placing one now
+ * gives you the size somebody who knew what they were doing chose for it.
+ *
+ * Scaled by the width of the glass so a bigger tank does not quietly shrink
+ * the composition, and capped, because past 420 a piece stops being furniture.
+ */
+const sizeOf = (id) => {
+  const P = PIECES[id];
+  if (!P) return 100;
+  return clamp(Math.round((P.size || 100) * tankSpan()), PIECE_MIN, PIECE_MAX);
+};
+
 /* Nobody should open this and find an empty rectangle. A new tank arrives
    furnished, free: something to look at, and something to drag around before
    you can afford to buy anything. */
@@ -4913,6 +4935,9 @@ const TANKV = {
   zoom: 1.45, panning: false, downX: 0, downY: 0, moved: 0,
   camX: TANK_W / 2, camY: TANK_H - 620,
   viewing: "", viewName: "", loaded: false,
+  /* The piece the size buttons act on: whatever you last placed or dragged.
+     -1 for nothing, and it is cleared whenever the list is reordered. */
+  sel: -1,
 };
 
 /** A brand new tank is furnished, not empty. Once only, ever. */
@@ -5096,9 +5121,17 @@ function paintPalette() {
   }
   el("tankPurse").textContent = `🫧 ${Wallet.pearls.toLocaleString()}  💎 ${Wallet.gems}`;
   el("tankTitle").textContent = TANKV.viewing ? `${TANKV.viewName}'s tank` : `Your Tank · level ${tankLevel()}`;
+  const sel = !TANKV.viewing && TANKV.items[TANKV.sel];
   el("tankHint").textContent = TANKV.viewing
     ? "You are visiting someone else's tank. Press “Back to mine” to return and build."
-    : "Click water to place · drag a piece to move it · drag the water to pan · scroll or pinch to zoom.";
+    : sel
+      ? `${(PIECES[sel.t] || {}).name || sel.t} selected · use Bigger and Smaller to resize it · tap any piece to pick a different one.`
+      : "Click water to place · drag a piece to move it · drag the water to pan · scroll or pinch to zoom.";
+  /* The size row is only meaningful with something selected, and only in your
+     own tank, so it is not left sitting there doing nothing. */
+  const row = el("sizeRow");
+  if (row) row.classList.toggle("hide", !sel);
+  if (sel) el("sizeNow").textContent = `${(PIECES[sel.t] || {}).name || sel.t} · ${sel.s}`;
   el("tankVisit").textContent = TANKV.viewing ? "Back to mine" : "Visit others";
   el("palette").style.opacity = TANKV.viewing ? "0.4" : "1";
 }
@@ -5133,6 +5166,8 @@ function tankDragStart(sx, sy) {
   const i = pieceAt(wx, wy);
   if (i < 0) return false;
   TANKV.drag = i;
+  TANKV.sel = i;
+  paintPalette();
   return true;                       /* picked something up, so do not place */
 }
 
@@ -5148,6 +5183,43 @@ function tankDragMove(sx, sy) {
 
 function tankDragEnd() {
   if (TANKV.drag >= 0) { TANKV.drag = -1; TANKV.dirty = true; }
+}
+
+/** Resize the selected piece. `mult` above 1 grows it, below 1 shrinks it. */
+function resizeSelected(mult) {
+  const it = TANKV.items[TANKV.sel];
+  if (TANKV.viewing || !it) { banner("nothing selected", "tap a piece first"); return; }
+  const was = it.s || 100;
+  it.s = clamp(Math.round(was * mult), PIECE_MIN, PIECE_MAX);
+  if (it.s === was) {
+    banner(mult > 1 ? "that is as big as it goes" : "that is as small as it goes", `${was}`);
+    return;
+  }
+  syncTankCritters();
+  paintPalette();
+  TANKV.dirty = true;
+  Snd.pickup();
+}
+
+/**
+ * Put every piece back to the size the catalogue says it should be.
+ *
+ * Here because the builder spent its whole life placing everything at 100, so
+ * an existing tank is full of pieces that are small for no reason anyone chose
+ * — and resizing sixty of them one at a time is not a fix. One press, and
+ * explicit, because it does rewrite a build.
+ */
+function normaliseSizes() {
+  if (TANKV.viewing || !TANKV.items.length) return;
+  let n = 0;
+  for (const it of TANKV.items) {
+    const want = sizeOf(it.t);
+    if (it.s !== want) { it.s = want; n++; }
+  }
+  syncTankCritters();
+  paintPalette();
+  TANKV.dirty = true;
+  banner(n ? "resized to the catalogue" : "already at those sizes", n ? `${n} piece${n === 1 ? "" : "s"}` : "nothing to change");
 }
 
 function tankClick(sx, sy) {
@@ -5171,6 +5243,7 @@ function tankClick(sx, sy) {
       const back = PIECES[TANKV.items[bi].t];
       if (back && !back.gem) Wallet.pearls += Math.round(back.price * 0.5);
       TANKV.items.splice(bi, 1);
+      TANKV.sel = -1;               /* every index after bi just moved */
       Wallet.save();
       syncTankCritters();
       paintPalette();
@@ -5195,7 +5268,8 @@ function tankClick(sx, sy) {
   if (TANKV.items.length >= tankMaxItems()) { banner("tank is full", `${tankMaxItems()} pieces`); return; }
   if (piece.gem) Wallet.gems -= piece.gem; else Wallet.pearls -= piece.price;
   Wallet.save();
-  TANKV.items.push({ t: TANKV.pick, x: Math.round(wx), y: Math.round(wy), s: 100 });
+  TANKV.items.push({ t: TANKV.pick, x: Math.round(wx), y: Math.round(wy), s: sizeOf(TANKV.pick) });
+  TANKV.sel = TANKV.items.length - 1;
   /* Checked here as well as on load: a piece that pushes the tank over a size
      threshold should widen the glass while you are looking at it, not the next
      time you happen to open the game. */
@@ -5937,6 +6011,22 @@ function drawTank() {
   drawCritters();
   drawBits();
 
+  /* A ring round whatever the size buttons will act on. Drawn last so it sits
+     over the piece, and pulsing rather than static so it reads as a selection
+     and not as another accessory somebody bought. */
+  const selIt = !TANKV.viewing && TANKV.items[TANKV.sel];
+  if (selIt) {
+    const r = (selIt.s || 100) * 1.1 * 0.62;
+    ctx.save();
+    ctx.translate(selIt.x, selIt.y);
+    ctx.lineWidth = Math.max(3, 5 / cam.z);
+    ctx.setLineDash([r * 0.35, r * 0.22]);
+    ctx.lineDashOffset = -T * r * 0.5;
+    ctx.strokeStyle = `rgba(255,209,97,${0.55 + Math.sin(T * 3) * 0.2})`;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   const vg = ctx.createRadialGradient(VW / 2, VH / 2, Math.min(VW, VH) * 0.35, VW / 2, VH / 2, Math.max(VW, VH) * 0.8);
   vg.addColorStop(0, "rgba(0,0,0,0)");
@@ -6143,6 +6233,9 @@ if (MODE === "tank") {
     el("tankSell").classList.toggle("on", TANKV.removing);
     paintPalette();
   });
+  el("sizeUp").addEventListener("click", () => resizeSelected(1.25));
+  el("sizeDown").addEventListener("click", () => resizeSelected(1 / 1.25));
+  el("tankFitSize").addEventListener("click", normaliseSizes);
   el("zoomIn").addEventListener("click", () => tankZoom(1.35, VW / 2, VH / 2));
   el("zoomOut").addEventListener("click", () => tankZoom(1 / 1.35, VW / 2, VH / 2));
   el("zoomFit").addEventListener("click", () => {
