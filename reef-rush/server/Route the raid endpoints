@@ -12,6 +12,7 @@
 import type { Env } from "./env";
 import { Room } from "./room";
 import { listTanks, readBoard, readLadder, readTank, readVip, saveTank, submitArena, submitRun, topTanks } from "./ranks";
+import { endRaid, readRaidState, startRaid } from "./raid";
 
 export { Room };
 
@@ -95,6 +96,36 @@ export default {
           Number(url.searchParams.get("limit") ?? "10"),
           (url.searchParams.get("pid") ?? "").slice(0, 64),
         );
+      }
+      /* Raids. The target is handed out by the server rather than named by the
+         client, and what a raid was worth is decided at /end from facts the
+         server already holds — see raidrules.js for why. */
+      if (url.pathname === "/api/raid/state" && request.method === "GET") {
+        return readRaidState(env, (url.searchParams.get("pid") ?? "").slice(0, 64));
+      }
+      if (url.pathname === "/api/raid/start" && request.method === "POST") {
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          return new Response(JSON.stringify({ ok: false, error: "invalid json" }), {
+            status: 400,
+            headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
+          });
+        }
+        return startRaid(env, body);
+      }
+      if (url.pathname === "/api/raid/end" && request.method === "POST") {
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          return new Response(JSON.stringify({ ok: false, error: "invalid json" }), {
+            status: 400,
+            headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
+          });
+        }
+        return endRaid(env, body);
       }
       if (url.pathname === "/api/tanks" && request.method === "GET") {
         return listTanks(env, (url.searchParams.get("pid") ?? "").slice(0, 64));
