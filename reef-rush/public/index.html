@@ -207,10 +207,11 @@
       .pal { flex: none; padding: 5px 8px; border-radius: 9px; cursor: pointer; text-align: center; min-width: 66px;
              background: rgba(255,255,255,.05); border: 1px solid var(--stroke); }
       .pal.on { border-color: rgba(120,230,255,.6); background: rgba(120,230,255,.14); }
+      /* Two states, and neither is a locked door: `cant` means you cannot
+         afford it yet, `full` means this tank already holds as many as it
+         should. Both are dimmed and both stay clickable-looking, because both
+         are things the player can do something about. */
       .pal.cant { opacity: .55; }
-      /* Locked reads as a promise rather than a failure: dim, but the level it
-         needs stays legible, so the ladder is visible from level one. */
-      .pal.lockd { opacity: .45; border-style: dashed; }
       .pal.full { opacity: .5; }
       .pal b { display: block; font-size: 10.5px; font-weight: 700; }
       .pal span { font-size: 9.5px; color: var(--gold); display: block; }
