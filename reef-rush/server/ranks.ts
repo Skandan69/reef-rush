@@ -12,6 +12,7 @@
  */
 
 import type { Env } from "./env";
+import { creditVault } from "./raid";
 
 const MAX_NAME = 24;
 const MAX_SCORE = 5_000_000;
@@ -20,6 +21,13 @@ const MAX_MASS = 5_000_000;
 /** One accepted run per player per 8s: a run cannot legitimately be shorter. */
 const WRITE_COOLDOWN_MS = 8_000;
 const BOARD_LIMIT = 25;
+
+/* Half of a run's pearls also accrue to the tank's vault, and no single run
+   may fill it by more than this. Both numbers are a floor under how long it
+   takes to build a vault worth raiding, which is what stops a raid economy
+   from being decided by whoever grinds the most in one sitting. */
+const VAULT_SHARE = 0.5;
+const VAULT_PER_RUN_CAP = 900;
 
 /** Deliberately small and blunt: it catches the obvious, not the creative. */
 const BLOCKED = [
@@ -198,7 +206,24 @@ export async function submitRun(env: Env, body: unknown): Promise<Response> {
     )
     .run();
 
-  return json({ ok: true });
+  /* A share of the run goes into the tank's vault, which is the only pearls a
+     raider can ever take. Recomputed here from the score and kills we just
+     stored rather than taken from what the client says it earned — the wallet
+     lives in localStorage and can say anything at all.
+
+     It is a parallel pot, not a deduction: the player still banks their full
+     run. What they risk by leaving it uncollected is this. */
+  const earned = Math.floor(score / 25) + int(b.kills, 0, MAX_KILLS) * 2;
+  const toVault = Math.min(VAULT_PER_RUN_CAP, Math.floor(earned * VAULT_SHARE));
+  if (toVault > 0) {
+    try {
+      await creditVault(env, pid, toVault);
+    } catch {
+      /* a vault that fails to fill is not worth failing the run over */
+    }
+  }
+
+  return json({ ok: true, vaulted: toVault });
 }
 
 export async function readBoard(env: Env, window: string, pid: string): Promise<Response> {
