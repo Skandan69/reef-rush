@@ -4761,6 +4761,11 @@ const PIECES = {
   garland:    { name: "Flower Garland",price: 140,gem: 0, kind: "decor", cap: 8,  lvl: 2 },
   vine:       { name: "Hanging Vine", price: 100, gem: 0, kind: "decor", cap: 10, lvl: 2 },
   bust:       { name: "Marble Bust",  price: 300, gem: 0, kind: "decor", cap: 8,  lvl: 4 },
+  /* Backdrops. Big, cheap per square metre, and meant for the empty water a
+     tank has above the reef: one whole facade does what thirty small pieces
+     cannot. Capped low because two temples is a skyline, three is a mess. */
+  temple:     { name: "Temple",       price: 900, gem: 0, kind: "decor", cap: 2,  lvl: 7 },
+  ruin:       { name: "Ruined Row",   price: 640, gem: 0, kind: "decor", cap: 3,  lvl: 6 },
   octopus:  { name: "Octopus",   price: 900,  gem: 0,  kind: "resident", cap: 2, lvl: 6 },
   mermaid:  { name: "Mermaid",   price: 0,    gem: 2,  kind: "resident", cap: 4, lvl: 8 },
   poseidon: { name: "Poseidon",  price: 0,    gem: 40, kind: "resident", cap: 1, lvl: 10 },
@@ -5272,6 +5277,105 @@ function drawTank() {
       ctx.fillStyle = "rgba(10,40,55,0.28)";
       ctx.beginPath(); ctx.ellipse(0, k * 0.5, w * 0.42, k * 0.1, 0, 0, TAU); ctx.fill();
       ctx.drawImage(img, -w / 2, k * 0.5 - h, w, h);
+    } else if (it.t === "temple" || it.t === "ruin") {
+      /* A facade, not a building: drawn flat and a little washed out, because
+         it belongs at the back of the water behind everything else. The same
+         marble as the pillars, so a colonnade and a temple read as one build. */
+      const far = it.t === "temple" ? 0.88 : 0.8;
+      ctx.globalAlpha = far;
+      const marble = (x0, x1, lo) => {
+        const g2 = ctx.createLinearGradient(x0, 0, x1, 0);
+        g2.addColorStop(0, lo ? "#7d8894" : "#9fabb8");
+        g2.addColorStop(0.3, lo ? "#dfe4ea" : "#f6f8fb");
+        g2.addColorStop(0.64, lo ? "#c8d0d9" : "#dfe6ee");
+        g2.addColorStop(1, lo ? "#79848f" : "#94a2b0");
+        return g2;
+      };
+      /* Tall on purpose. These exist to occupy the water a reef cannot reach:
+         at k*2.0 the roofline landed mid-tank and left the top third as blank
+         blue, which is the whole problem they are here to solve. */
+      const W = k * 2.5, H = k * 3.1;
+      const baseY = k * 0.5;
+      const col = (cx, w, top, bot, broken) => {
+        ctx.fillStyle = marble(cx - w, cx + w, broken);
+        ctx.fillRect(cx - w, top, w * 2, bot - top);
+        ctx.fillStyle = marble(cx - w * 1.35, cx + w * 1.35, broken);
+        if (!broken) ctx.fillRect(cx - w * 1.35, top - k * 0.06, w * 2.7, k * 0.06);
+        ctx.fillRect(cx - w * 1.25, bot - k * 0.04, w * 2.5, k * 0.04);
+        ctx.strokeStyle = "rgba(110,132,155,0.28)"; ctx.lineWidth = k * 0.012;
+        for (let i = -1; i <= 1; i++) {
+          ctx.beginPath();
+          ctx.moveTo(cx + i * w * 0.5, top + k * 0.03);
+          ctx.lineTo(cx + i * w * 0.5, bot - k * 0.05);
+          ctx.stroke();
+        }
+      };
+      /* stylobate: the stepped platform everything stands on */
+      ctx.fillStyle = marble(-W / 2, W / 2, true);
+      for (let i = 0; i < 3; i++) {
+        const inset = i * k * 0.06;
+        ctx.fillRect(-W / 2 + inset, baseY - k * 0.05 - i * k * 0.05, W - inset * 2, k * 0.05);
+      }
+      const floorY = baseY - k * 0.15;
+      const capY = floorY - H * 0.68;
+
+      if (it.t === "temple") {
+        const n = 6;
+        for (let i = 0; i < n; i++) {
+          const cx = -W / 2 + k * 0.24 + (i * (W - k * 0.48)) / (n - 1);
+          col(cx, k * 0.075, capY, floorY, false);
+        }
+        /* architrave and a frieze of triglyphs */
+        ctx.fillStyle = marble(-W / 2, W / 2);
+        ctx.fillRect(-W / 2, capY - k * 0.1, W, k * 0.1);
+        ctx.fillRect(-W / 2 - k * 0.03, capY - k * 0.22, W + k * 0.06, k * 0.12);
+        ctx.fillStyle = "rgba(120,140,162,0.4)";
+        for (let i = 0; i < 13; i++) {
+          ctx.fillRect(-W / 2 + i * (W / 13) + k * 0.02, capY - k * 0.2, k * 0.03, k * 0.09);
+        }
+        /* pediment, with a hint of sculpture in the tympanum */
+        const apex = capY - k * 0.78;
+        ctx.fillStyle = marble(-W / 2, W / 2);
+        ctx.beginPath();
+        ctx.moveTo(-W / 2 - k * 0.05, capY - k * 0.22);
+        ctx.lineTo(0, apex);
+        ctx.lineTo(W / 2 + k * 0.05, capY - k * 0.22);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "rgba(120,140,162,0.32)";
+        ctx.beginPath();
+        ctx.moveTo(-W / 2 + k * 0.12, capY - k * 0.25);
+        ctx.lineTo(0, apex + k * 0.12);
+        ctx.lineTo(W / 2 - k * 0.12, capY - k * 0.25);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "rgba(150,166,182,0.55)";
+        for (let i = -3; i <= 3; i++) {
+          const t2 = Math.abs(i) / 3;
+          const hh = k * (0.16 - t2 * 0.1);
+          ctx.beginPath();
+          ctx.ellipse(i * W * 0.11, capY - k * 0.29 - hh * 0.5, k * 0.035, hh * 0.5, 0, 0, TAU);
+          ctx.fill();
+        }
+        /* acroteria */
+        ctx.fillStyle = marble(-k * 0.1, k * 0.1);
+        ctx.beginPath(); ctx.arc(0, apex - k * 0.05, k * 0.05, 0, TAU); ctx.fill();
+      } else {
+        /* a row that has lost its roof: uneven heights, a span over two bays */
+        const n = 7;
+        for (let i = 0; i < n; i++) {
+          const cx = -W / 2 + k * 0.2 + (i * (W - k * 0.4)) / (n - 1);
+          const shortBy = [0, 0.22, 0, 0.42, 0.06, 0.3, 0][i] || 0;
+          col(cx, k * 0.07, capY + H * 0.68 * shortBy, floorY, shortBy > 0.2);
+        }
+        ctx.fillStyle = marble(-W / 2, -W / 2 + W * 0.42);
+        ctx.fillRect(-W / 2 - k * 0.02, capY - k * 0.1, W * 0.42, k * 0.1);
+        ctx.fillStyle = marble(W * 0.1, W / 2);
+        ctx.fillRect(W * 0.1, capY - k * 0.08, W * 0.4, k * 0.08);
+        /* fallen drums on the platform */
+        ctx.fillStyle = marble(-k * 0.2, k * 0.2, true);
+        ctx.beginPath(); ctx.ellipse(-W * 0.2, floorY - k * 0.04, k * 0.14, k * 0.05, 0.2, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(W * 0.26, floorY - k * 0.03, k * 0.11, k * 0.04, -0.15, 0, TAU); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
     } else if (it.t === "garland") {
       /* A swag: a rope hung between two points, sagging under its own weight,
          with the flowers threaded along it. It sways from the ends inward, as
