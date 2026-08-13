@@ -4750,11 +4750,42 @@ function drawBossBar(k) {
    what finally gives a reef run a point beyond its own scoreline.
    ========================================================================== */
 
-const TANK_W = 4000, TANK_H = 2400;
-/* Kept in step with TANK_MAX_ITEMS in server/ranks.ts by hand. If these two
-   ever disagree the smaller one wins silently, which is how the builder came
-   to refuse a tank the server was perfectly happy to store. */
-const TANK_MAX_ITEMS = 200;
+/* The glass a tank starts in, and the sizes it grows into as the tank levels.
+   Keep the last tier in step with TANK_MAX_W / TANK_MAX_H in server/ranks.ts.
+   Growth adds water at the top and along the right: the sand stays where the
+   sand was. That is the whole reason `h` travels with a layout — a piece's y
+   is measured from the surface, so raising the roof by 500 means every piece
+   already in the tank has to come down by 500 or the whole build is left
+   hanging in mid-water above its own floor. */
+const TANK_BASE_W = 4000, TANK_BASE_H = 2400;
+const SIZES = [
+  { lvl: 1,  w: 4000, h: 2400 },
+  { lvl: 4,  w: 5200, h: 2900 },
+  { lvl: 7,  w: 6400, h: 3400 },
+  { lvl: 10, w: 7600, h: 4000 },
+];
+const sizeFor = (lvl) => {
+  let s = SIZES[0];
+  for (const t of SIZES) if (lvl >= t.lvl) s = t;
+  return s;
+};
+/* Not const: the glass this tank is being drawn in, which is the player's own
+   when building and the owner's when visiting. */
+let TANK_W = TANK_BASE_W, TANK_H = TANK_BASE_H;
+
+/* How much fits scales with how much room there is, rather than with a level.
+   A bigger tank is the reward and the permission in one: there is more space,
+   so more goes in it, and nothing has to be explained beyond that.
+   The server's ceiling is 400 — this stays under it at every tier. */
+const tankRoom = () => (TANK_W * TANK_H) / (TANK_BASE_W * TANK_BASE_H);
+/* Wide pieces tile along the tank rather than filling it, so they follow the
+   width and not the area. Area-scaling put thirteen temples in the largest
+   glass — about 15,000px of facade in 7,600px of tank. */
+const tankSpan = () => TANK_W / TANK_BASE_W;
+/* Clamped to the server's own ceiling. Without this the largest tank offers
+   633 places and the save that used them is rejected wholesale as "too many
+   pieces" — the worst possible moment to find out. */
+const tankMaxItems = () => Math.min(400, Math.round(200 * tankRoom()));
 
 /* The whole catalogue is available from the first minute. There used to be a
    `lvl` on each piece and you unlocked it by building; the trouble was that
@@ -4833,10 +4864,19 @@ function tankValue() {
 /* Retuned with the cheaper catalogue: filling every level-1 slot lands you
    around level 5, which opens prawn, anemone, seahorse and the wreck. */
 const tankLevel = () => Math.max(1, Math.min(12, 1 + Math.floor(Math.sqrt(tankValue() / 60))));
+/* Caps follow the size of the glass, not the level. `cap` is the number for a
+   starting tank and it scales with the water available, so the reward for
+   levelling is simply a bigger tank — and everything that follows from a
+   bigger tank follows on its own, with no second rule to learn. Pieces capped
+   at one stay at one: there is one Poseidon however big the tank gets. */
 const capFor = (id) => {
   const P = PIECES[id];
   if (!P) return 0;
-  return P.cap <= 1 ? P.cap : P.cap + Math.floor((tankLevel() - 1) / 2);
+  if (P.cap <= 1) return P.cap;
+  /* A low cap is how this catalogue says "showpiece" — temple 4, wreck 3,
+     arch and chest 5, ruin and octopus 6. Those are the ones that read as
+     architecture, so they follow the width; the small stuff fills the water. */
+  return Math.round(P.cap * (P.cap <= 6 ? tankSpan() : tankRoom()));
 };
 const ownedOf = (id) => TANKV.items.reduce((n, it) => n + (it.t === id ? 1 : 0), 0);
 
@@ -4878,19 +4918,58 @@ function seedStarterTank() {
   return true;
 }
 
+/**
+ * Fit the glass to the tank that has just been loaded, and grow it if this
+ * player has outgrown it.
+ *
+ * Two separate jobs that look like one. Visiting somebody else's tank, the
+ * glass is simply theirs and nothing is written. In your own, the tank may
+ * have earned a bigger size since you last opened it, and taking it means
+ * moving everything you have built down by the height that was added — the
+ * sand is at h - 130, so a taller tank puts the floor lower, and a build that
+ * does not come with it is left standing on nothing.
+ *
+ * Never shrinks. Removing pieces drops the level, and a tank that shrank back
+ * would push whatever sat near the old roof out through the new one.
+ */
+function growGlass() {
+  if (TANKV.viewing) return false;              /* a guest changes nothing */
+  const want = sizeFor(tankLevel());
+  const w = Math.max(TANK_W, want.w), h = Math.max(TANK_H, want.h);
+  if (w === TANK_W && h === TANK_H) return false;
+  const drop = h - TANK_H;
+  if (drop) for (const it of TANKV.items) it.y += drop;
+  TANK_W = w; TANK_H = h;
+  TANKV.dirty = true;
+  syncTankCritters();
+  return true;
+}
+
+function fitGlass(storedW, storedH) {
+  TANK_W = Math.max(TANK_BASE_W, storedW || TANK_BASE_W);
+  TANK_H = Math.max(TANK_BASE_H, storedH || TANK_BASE_H);
+  return growGlass();
+}
+
 async function loadTank(who) {
+  let d = {};
   try {
     const res = await fetch(`${API_BASE}/api/tank?pid=${encodeURIComponent(who || pid)}&by=${encodeURIComponent(pid)}`);
-    const d = await res.json();
+    d = await res.json();
     TANKV.items = Array.isArray(d.items) ? d.items : [];
     TANKV.viewName = d.name || "";
   } catch (e) {
     TANKV.items = [];
   }
   if (!TANKV.viewing && seedStarterTank()) banner("your tank is set up", "drag a piece to move it");
+  /* After the starter tank, so a brand new tank is sized against what it was
+     actually given rather than against an empty one. */
+  const grew = fitGlass(d.w, d.h);
+  TANKV.camX = TANK_W / 2; TANKV.camY = TANK_H - 620;
   TANKV.loaded = true;
   syncTankCritters();
   paintPalette();
+  if (grew) banner("your tank has grown", `${TANK_W} x ${TANK_H} — more water to fill`);
   tankDailyReward();
 }
 
@@ -4916,7 +4995,7 @@ function saveTank() {
     fetch(`${API_BASE}/api/tank`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ pid, name: G.rawName || Wallet.lastName || "A fish", flag: Wallet.flag, items: TANKV.items }),
+      body: JSON.stringify({ pid, name: G.rawName || Wallet.lastName || "A fish", flag: Wallet.flag, items: TANKV.items, w: TANK_W, h: TANK_H }),
       keepalive: true,
     }).catch(() => {});
   } catch (e) {}
@@ -5106,13 +5185,18 @@ function tankClick(sx, sy) {
   }
   /* Matched to what the server actually stores. At 120 a player copying Coral
      Cathedral (152 pieces) hit "tank is full" less than halfway through it. */
-  if (TANKV.items.length >= TANK_MAX_ITEMS) { banner("tank is full", `${TANK_MAX_ITEMS} pieces`); return; }
+  if (TANKV.items.length >= tankMaxItems()) { banner("tank is full", `${tankMaxItems()} pieces`); return; }
   if (piece.gem) Wallet.gems -= piece.gem; else Wallet.pearls -= piece.price;
   Wallet.save();
   TANKV.items.push({ t: TANKV.pick, x: Math.round(wx), y: Math.round(wy), s: 100 });
+  /* Checked here as well as on load: a piece that pushes the tank over a size
+     threshold should widen the glass while you are looking at it, not the next
+     time you happen to open the game. */
+  const grew = growGlass();
   syncTankCritters();
   paintPalette();
   TANKV.dirty = true;
+  if (grew) banner("your tank has grown", `${TANK_W} x ${TANK_H} — more water to fill`);
   Snd.food();
 }
 
