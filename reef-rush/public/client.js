@@ -4843,8 +4843,8 @@ const PIECES = {
   garden:     { name: "Anemone Garden",price: 150,gem: 0, kind: "decor", cap: 20, size: 152 },
   clam:       { name: "Pearl Clam",   price: 280, gem: 0, kind: "decor", cap: 10, size: 150 },
   lamp:       { name: "Gold Lamp",    price: 340, gem: 0, kind: "decor", cap: 12, size: 250 },
-  chest:      { name: "Treasure Chest",price: 620,gem: 0, kind: "decor", cap: 5, size: 210 },
-  statue:     { name: "Nereid Statue",price: 780, gem: 0, kind: "decor", cap: 8, size: 100 },
+  chest:      { name: "Treasure Chest",price: 620,gem: 0, kind: "decor", cap: 5, size: 210, lvl: 3 },
+  statue:     { name: "Nereid Statue",price: 780, gem: 0, kind: "decor", cap: 8, size: 100, lvl: 4 },
   garland:    { name: "Flower Garland",price: 140,gem: 0, kind: "decor", cap: 20, size: 210 },
   vine:       { name: "Hanging Vine", price: 100, gem: 0, kind: "decor", cap: 24, size: 140 },
   bust:       { name: "Marble Bust",  price: 300, gem: 0, kind: "decor", cap: 20, size: 150 },
@@ -4852,11 +4852,11 @@ const PIECES = {
      tank has above the reef: one whole facade does what thirty small pieces
      cannot. Still the lowest caps in the catalogue: these are backdrops, and
      past a handful they stop being a horizon and start being a wall. */
-  temple:     { name: "Temple",       price: 900, gem: 0, kind: "decor", cap: 4, size: 400 },
-  ruin:       { name: "Ruined Row",   price: 640, gem: 0, kind: "decor", cap: 6, size: 370 },
+  temple:     { name: "Temple",       price: 900, gem: 0, kind: "decor", cap: 4, size: 400, lvl: 5 },
+  ruin:       { name: "Ruined Row",   price: 640, gem: 0, kind: "decor", cap: 6, size: 370, lvl: 4 },
   octopus:  { name: "Octopus",   price: 900,  gem: 0,  kind: "resident", cap: 5, size: 100 },
-  mermaid:  { name: "Mermaid",   price: 0,    gem: 2,  kind: "resident", cap: 8, size: 96 },
-  poseidon: { name: "Poseidon",  price: 0,    gem: 40, kind: "resident", cap: 1, size: 76 },
+  mermaid:  { name: "Mermaid",   price: 0,    gem: 2,  kind: "resident", cap: 8, size: 96, lvl: 5 },
+  poseidon: { name: "Poseidon",  price: 0,    gem: 40, kind: "resident", cap: 1, size: 76, lvl: 6 },
 };
 
 /** The tank levels on what you have actually built into it. */
@@ -4868,9 +4868,19 @@ function tankValue() {
   }
   return v;
 }
-/* Retuned with the cheaper catalogue: filling every level-1 slot lands you
-   around level 5, which opens prawn, anemone, seahorse and the wreck. */
-const tankLevel = () => Math.max(1, Math.min(12, 1 + Math.floor(Math.sqrt(tankValue() / 60))));
+/* 900, not 60. At 60 the top of a twelve-level ladder cost 7,260 — less than a
+   tank packed with the two hundred CHEAPEST pieces in the catalogue, which
+   comes to 19,085. Every tank that got built at all finished at level 12 within
+   an hour, so the number above the palette climbed once and then never moved
+   again, and the three tank sizes waiting at levels 4, 7 and 10 all arrived at
+   once. At 900 the rungs land at 8,100 / 32,400 / 72,900, and the ceiling at
+   108,900 against a theoretical maximum near 190,000: reachable, but earned.
+
+   Nobody loses anything to this. The glass is a ratchet that never shrinks and
+   piece caps follow the glass rather than the level, so a tank that was reading
+   12 keeps every bit of the room and the allowances it already had — the number
+   beside its name simply stops being a foregone conclusion. */
+const tankLevel = () => Math.max(1, Math.min(12, 1 + Math.floor(Math.sqrt(tankValue() / 900))));
 /* Caps follow the size of the glass, not the level. `cap` is the number for a
    starting tank and it scales with the water available, so the reward for
    levelling is simply a bigger tank — and everything that follows from a
@@ -5102,14 +5112,20 @@ async function refreshGallery() {
 function paintPalette() {
   const box = el("palette");
   if (!box) return;
+  const lvl = tankLevel();
   box.innerHTML = Object.keys(PIECES).map((id) => {
     const p2 = PIECES[id];
+    /* Six of forty carry a `lvl`, and only the showpieces do. A locked door is
+       only worth anything if the key is actually somewhere down the road: when
+       every tank hit the ceiling in an hour these said "not yet" to nobody, and
+       now that levelling is a climb they say it to everybody for a while. */
+    const locked = p2.lvl && lvl < p2.lvl;
     const have = ownedOf(id), cap = capFor(id);
     const poor = p2.gem ? Wallet.gems < p2.gem : Wallet.pearls < p2.price;
     const full = have >= cap;
-    const cost = p2.gem ? `💎 ${p2.gem}` : `🫧 ${p2.price}`;
-    return `<div class="pal ${id === TANKV.pick && !TANKV.removing ? "on" : ""} ${full ? "full" : poor ? "cant" : ""}" data-piece="${id}">
-      <b>${p2.name}</b><span>${cost}</span><span style="color:var(--dim)">${full ? "full" : have + "/" + cap}</span></div>`;
+    const cost = locked ? `level ${p2.lvl}` : p2.gem ? `💎 ${p2.gem}` : `🫧 ${p2.price}`;
+    return `<div class="pal ${id === TANKV.pick && !TANKV.removing ? "on" : ""} ${locked ? "lockd" : full ? "full" : poor ? "cant" : ""}" data-piece="${id}">
+      <b>${p2.name}</b><span>${cost}</span><span style="color:var(--dim)">${locked ? "locked" : full ? "full" : have + "/" + cap}</span></div>`;
   }).join("");
   for (const c of box.querySelectorAll(".pal")) {
     c.addEventListener("click", () => {
@@ -5255,6 +5271,10 @@ function tankClick(sx, sy) {
 
   const piece = PIECES[TANKV.pick];
   if (!piece) return;
+  if (piece.lvl && tankLevel() < piece.lvl) {
+    banner("not yet", `${piece.name} opens at tank level ${piece.lvl}`);
+    return;
+  }
   if (ownedOf(TANKV.pick) >= capFor(TANKV.pick)) {
     banner("you have enough of those", `${capFor(TANKV.pick)} is the limit for now`);
     return;
