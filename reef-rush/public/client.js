@@ -2464,8 +2464,19 @@ function paintFlag(c, f, x, y, w, h) {
   c.strokeRect(x, y, w, h);
 }
 
+/* A one-time building budget, paid to every tank the first time this version
+   of the wallet is opened.
+
+   The size is not arbitrary: the cheapest of the four tanks in the gallery is
+   worth a little under 17,000 pearls, so anything less than this leaves a new
+   player looking at a finished tank they can admire and not reproduce. 25,000
+   buys one whole build of that ambition, once. After that pearls come from the
+   reef, the way they always did — which is the point, since a tank you can
+   refill for free is a tank nobody has any reason to go fishing for. */
+const BUILD_GRANT = 25_000;
+
 const Wallet = {
-  pearls: 0, gems: 0, vipUntil: 0, lastGem: 0, lastTend: 0, firstHaul: 0, owned: { clown: 1 }, skin: "clown", flag: "", team: -1,
+  pearls: 0, gems: 0, vipUntil: 0, lastGem: 0, lastTend: 0, firstHaul: 0, granted: 0, owned: { clown: 1 }, skin: "clown", flag: "", team: -1,
   load() {
     try {
       const raw = JSON.parse(localStorage.getItem("rr_wallet") || "{}");
@@ -2473,15 +2484,31 @@ const Wallet = {
       this.gems = Number(raw.gems) || 0;
       this.vipUntil = Number(raw.vipUntil) || 0;
       this.lastGem = Number(raw.lastGem) || 0;
+      this.granted = Number(raw.granted) || 0;
+      /* These two were being kept in memory and never written, so the "come
+         back tomorrow" tending reward paid out on every page load and the
+         one-off first-haul bonus paid once per session. Both are meant to be
+         once, which only works if they survive a refresh. */
+      this.lastTend = Number(raw.lastTend) || 0;
+      this.firstHaul = Number(raw.firstHaul) || 0;
       this.owned = Object.assign({ clown: 1 }, raw.owned || {});
       this.skin = SKINS.some((s) => s.id === raw.skin) && this.owned[raw.skin] ? raw.skin : "clown";
       this.flag = typeof raw.flag === "string" ? raw.flag : "";
       this.team = Number.isInteger(raw.team) ? raw.team : -1;
     } catch (e) {}
+    /* Paid on top of whatever was already earned rather than set as a floor:
+       a player who has ground out 30,000 should not be handed the same "grant"
+       as one who has 11 and quietly receive nothing. Recorded by amount, not
+       by a boolean, so raising the figure later can top up the difference. */
+    if (this.granted < BUILD_GRANT) {
+      this.pearls += BUILD_GRANT - this.granted;
+      this.granted = BUILD_GRANT;
+      this.save();
+    }
   },
   save() {
     try {
-      localStorage.setItem("rr_wallet", JSON.stringify({ pearls: this.pearls, gems: this.gems, vipUntil: this.vipUntil, lastGem: this.lastGem, owned: this.owned, skin: this.skin, flag: this.flag, team: this.team }));
+      localStorage.setItem("rr_wallet", JSON.stringify({ pearls: this.pearls, gems: this.gems, vipUntil: this.vipUntil, lastGem: this.lastGem, granted: this.granted, lastTend: this.lastTend, firstHaul: this.firstHaul, owned: this.owned, skin: this.skin, flag: this.flag, team: this.team }));
     } catch (e) {}
   },
   skinDef() { return SKINS.find((s) => s.id === this.skin) || SKINS[0]; },
@@ -4714,61 +4741,69 @@ function drawBossBar(k) {
 
 const TANK_W = 4000, TANK_H = 2400;
 
-/* Nothing is unlimited. `cap` is how many you may own at tank level 1 and it
-   grows as the tank does; `lvl` is the level the piece unlocks at. That is
-   what makes levelling mean something rather than just being a number. */
+/* The whole catalogue is available from the first minute. There used to be a
+   `lvl` on each piece and you unlocked it by building; the trouble was that
+   the four tanks the gallery shows off need a Temple (level 7) and a Statue
+   (level 6), so the thing put in front of a new player to inspire them was
+   also the thing they were told they could not touch. Aspiration you cannot
+   act on is just a locked door.
+
+   `cap` is what is left: how many of a piece one tank may hold, still growing
+   a little as the tank does. It is a composition limit rather than a
+   progression one — two temples is a skyline, four is a mess — and it is set
+   high enough that every tank in the gallery is buildable by anyone. */
 const PIECES = {
-  pebbles:  { name: "Pebbles",   price: 10,   gem: 0,  kind: "decor",    cap: 10, lvl: 1 },
-  shell:    { name: "Shell",     price: 12,   gem: 0,  kind: "decor",    cap: 8, lvl: 1 },
-  seagrass: { name: "Seagrass",  price: 15,   gem: 0,  kind: "decor",    cap: 10, lvl: 1 },
-  starfish: { name: "Starfish",  price: 18,   gem: 0,  kind: "decor",    cap: 6, lvl: 1 },
-  rock:     { name: "Rock",      price: 25,   gem: 0,  kind: "decor",    cap: 6, lvl: 1 },
-  kelp:     { name: "Kelp",      price: 30,   gem: 0,  kind: "decor",    cap: 8, lvl: 1 },
-  coral:    { name: "Coral",     price: 45,   gem: 0,  kind: "decor",    cap: 6, lvl: 1 },
-  /* 70, and at level one: the first day's tending reward on a starter tank is
-     80, and the whole promise of level one is that something ALIVE is within
-     reach the moment you open the lid. */
-  crab:     { name: "Crab",      price: 70,   gem: 0,  kind: "resident", cap: 4, lvl: 1 },
-  prawn:    { name: "Prawn",     price: 120,  gem: 0,  kind: "resident", cap: 6, lvl: 3 },
-  anemone:  { name: "Anemone",   price: 120,  gem: 0,  kind: "decor",    cap: 4, lvl: 3 },
-  seahorse: { name: "Seahorse",  price: 300,  gem: 0,  kind: "resident", cap: 3, lvl: 4 },
-  wreck:    { name: "Wreck",     price: 400,  gem: 0,  kind: "decor",    cap: 1, lvl: 5 },
+  pebbles:  { name: "Pebbles",   price: 10,   gem: 0,  kind: "decor",    cap: 30 },
+  shell:    { name: "Shell",     price: 12,   gem: 0,  kind: "decor",    cap: 24 },
+  seagrass: { name: "Seagrass",  price: 15,   gem: 0,  kind: "decor",    cap: 30 },
+  starfish: { name: "Starfish",  price: 18,   gem: 0,  kind: "decor",    cap: 20 },
+  rock:     { name: "Rock",      price: 25,   gem: 0,  kind: "decor",    cap: 16 },
+  kelp:     { name: "Kelp",      price: 30,   gem: 0,  kind: "decor",    cap: 30 },
+  coral:    { name: "Coral",     price: 45,   gem: 0,  kind: "decor",    cap: 20 },
+  /* 70: the first day's tending reward on a starter tank is 80, so something
+     ALIVE is within reach the moment you open the lid. */
+  crab:     { name: "Crab",      price: 70,   gem: 0,  kind: "resident", cap: 10 },
+  prawn:    { name: "Prawn",     price: 120,  gem: 0,  kind: "resident", cap: 14 },
+  anemone:  { name: "Anemone",   price: 120,  gem: 0,  kind: "decor",    cap: 16 },
+  seahorse: { name: "Seahorse",  price: 300,  gem: 0,  kind: "resident", cap: 10 },
+  wreck:    { name: "Wreck",     price: 400,  gem: 0,  kind: "decor",    cap: 3 },
   /* The stonework and the flowers: things a tank keeper builds for the look of
      the place rather than for the fish. Priced so a well-tended tank can afford
      a colonnade without the reef pieces losing their meaning. */
-  bloomrose:  { name: "Rose Bloom",   price: 55,  gem: 0, kind: "decor", cap: 10, lvl: 1 },
-  bloomgold:  { name: "Gold Bloom",   price: 55,  gem: 0, kind: "decor", cap: 10, lvl: 1 },
-  bloomviolet:{ name: "Violet Bloom", price: 55,  gem: 0, kind: "decor", cap: 10, lvl: 1 },
-  urn:        { name: "Amphora",      price: 160, gem: 0, kind: "decor", cap: 5,  lvl: 2 },
-  pillar:     { name: "Marble Pillar",price: 220, gem: 0, kind: "decor", cap: 8,  lvl: 2 },
-  lantern:    { name: "Lantern",      price: 260, gem: 0, kind: "decor", cap: 5,  lvl: 3 },
-  arch:       { name: "Marble Arch",  price: 520, gem: 0, kind: "decor", cap: 2,  lvl: 4 },
-  bubbles:    { name: "Bubble Vent",  price: 90,  gem: 0, kind: "decor", cap: 6,  lvl: 2 },
-  sponge:     { name: "Tube Sponges", price: 70,  gem: 0, kind: "decor", cap: 8,  lvl: 1 },
-  fan:        { name: "Sea Fan",      price: 110, gem: 0, kind: "decor", cap: 6,  lvl: 2 },
-  crystal:    { name: "Glow Crystals",price: 190, gem: 0, kind: "decor", cap: 6,  lvl: 3 },
-  driftwood:  { name: "Driftwood",    price: 80,  gem: 0, kind: "decor", cap: 4,  lvl: 1 },
-  mosaic:     { name: "Mosaic Tile",  price: 65,  gem: 0, kind: "decor", cap: 14, lvl: 1 },
-  jelly:      { name: "Moon Jelly",   price: 210, gem: 0, kind: "decor", cap: 8,  lvl: 3 },
+  bloomrose:  { name: "Rose Bloom",   price: 55,  gem: 0, kind: "decor", cap: 26 },
+  bloomgold:  { name: "Gold Bloom",   price: 55,  gem: 0, kind: "decor", cap: 26 },
+  bloomviolet:{ name: "Violet Bloom", price: 55,  gem: 0, kind: "decor", cap: 26 },
+  urn:        { name: "Amphora",      price: 160, gem: 0, kind: "decor", cap: 14 },
+  pillar:     { name: "Marble Pillar",price: 220, gem: 0, kind: "decor", cap: 20 },
+  lantern:    { name: "Lantern",      price: 260, gem: 0, kind: "decor", cap: 12 },
+  arch:       { name: "Marble Arch",  price: 520, gem: 0, kind: "decor", cap: 5 },
+  bubbles:    { name: "Bubble Vent",  price: 90,  gem: 0, kind: "decor", cap: 14 },
+  sponge:     { name: "Tube Sponges", price: 70,  gem: 0, kind: "decor", cap: 20 },
+  fan:        { name: "Sea Fan",      price: 110, gem: 0, kind: "decor", cap: 16 },
+  crystal:    { name: "Glow Crystals",price: 190, gem: 0, kind: "decor", cap: 16 },
+  driftwood:  { name: "Driftwood",    price: 80,  gem: 0, kind: "decor", cap: 12 },
+  mosaic:     { name: "Mosaic Tile",  price: 65,  gem: 0, kind: "decor", cap: 34 },
+  jelly:      { name: "Moon Jelly",   price: 210, gem: 0, kind: "decor", cap: 24 },
   /* Painted pieces, to sit alongside the painted characters. Each falls back
      to nothing if its file is missing, exactly as the characters do. */
-  gorgonian:  { name: "Gorgonian",    price: 130, gem: 0, kind: "decor", cap: 8,  lvl: 2 },
-  garden:     { name: "Anemone Garden",price: 150,gem: 0, kind: "decor", cap: 8,  lvl: 2 },
-  clam:       { name: "Pearl Clam",   price: 280, gem: 0, kind: "decor", cap: 4,  lvl: 3 },
-  lamp:       { name: "Gold Lamp",    price: 340, gem: 0, kind: "decor", cap: 5,  lvl: 4 },
-  chest:      { name: "Treasure Chest",price: 620,gem: 0, kind: "decor", cap: 2,  lvl: 5 },
-  statue:     { name: "Nereid Statue",price: 780, gem: 0, kind: "decor", cap: 3,  lvl: 6 },
-  garland:    { name: "Flower Garland",price: 140,gem: 0, kind: "decor", cap: 8,  lvl: 2 },
-  vine:       { name: "Hanging Vine", price: 100, gem: 0, kind: "decor", cap: 10, lvl: 2 },
-  bust:       { name: "Marble Bust",  price: 300, gem: 0, kind: "decor", cap: 8,  lvl: 4 },
+  gorgonian:  { name: "Gorgonian",    price: 130, gem: 0, kind: "decor", cap: 20 },
+  garden:     { name: "Anemone Garden",price: 150,gem: 0, kind: "decor", cap: 20 },
+  clam:       { name: "Pearl Clam",   price: 280, gem: 0, kind: "decor", cap: 10 },
+  lamp:       { name: "Gold Lamp",    price: 340, gem: 0, kind: "decor", cap: 12 },
+  chest:      { name: "Treasure Chest",price: 620,gem: 0, kind: "decor", cap: 5 },
+  statue:     { name: "Nereid Statue",price: 780, gem: 0, kind: "decor", cap: 8 },
+  garland:    { name: "Flower Garland",price: 140,gem: 0, kind: "decor", cap: 20 },
+  vine:       { name: "Hanging Vine", price: 100, gem: 0, kind: "decor", cap: 24 },
+  bust:       { name: "Marble Bust",  price: 300, gem: 0, kind: "decor", cap: 20 },
   /* Backdrops. Big, cheap per square metre, and meant for the empty water a
      tank has above the reef: one whole facade does what thirty small pieces
-     cannot. Capped low because two temples is a skyline, three is a mess. */
-  temple:     { name: "Temple",       price: 900, gem: 0, kind: "decor", cap: 2,  lvl: 7 },
-  ruin:       { name: "Ruined Row",   price: 640, gem: 0, kind: "decor", cap: 3,  lvl: 6 },
-  octopus:  { name: "Octopus",   price: 900,  gem: 0,  kind: "resident", cap: 2, lvl: 6 },
-  mermaid:  { name: "Mermaid",   price: 0,    gem: 2,  kind: "resident", cap: 4, lvl: 8 },
-  poseidon: { name: "Poseidon",  price: 0,    gem: 40, kind: "resident", cap: 1, lvl: 10 },
+     cannot. Still the lowest caps in the catalogue: these are backdrops, and
+     past a handful they stop being a horizon and start being a wall. */
+  temple:     { name: "Temple",       price: 900, gem: 0, kind: "decor", cap: 4 },
+  ruin:       { name: "Ruined Row",   price: 640, gem: 0, kind: "decor", cap: 6 },
+  octopus:  { name: "Octopus",   price: 900,  gem: 0,  kind: "resident", cap: 5 },
+  mermaid:  { name: "Mermaid",   price: 0,    gem: 2,  kind: "resident", cap: 8 },
+  poseidon: { name: "Poseidon",  price: 0,    gem: 40, kind: "resident", cap: 1 },
 };
 
 /** The tank levels on what you have actually built into it. */
@@ -4941,16 +4976,13 @@ async function refreshGallery() {
 function paintPalette() {
   const box = el("palette");
   if (!box) return;
-  const lvl = tankLevel();
   box.innerHTML = Object.keys(PIECES).map((id) => {
     const p2 = PIECES[id];
-    const locked = lvl < p2.lvl;
     const have = ownedOf(id), cap = capFor(id);
     const poor = p2.gem ? Wallet.gems < p2.gem : Wallet.pearls < p2.price;
     const full = have >= cap;
-    const cant = locked || poor || full;
-    const cost = locked ? `level ${p2.lvl}` : p2.gem ? `💎 ${p2.gem}` : `🫧 ${p2.price}`;
-    return `<div class="pal ${id === TANKV.pick && !TANKV.removing ? "on" : ""} ${locked ? "lockd" : full ? "full" : poor ? "cant" : ""}" data-piece="${id}">
+    const cost = p2.gem ? `💎 ${p2.gem}` : `🫧 ${p2.price}`;
+    return `<div class="pal ${id === TANKV.pick && !TANKV.removing ? "on" : ""} ${full ? "full" : poor ? "cant" : ""}" data-piece="${id}">
       <b>${p2.name}</b><span>${cost}</span><span style="color:var(--dim)">${full ? "full" : have + "/" + cap}</span></div>`;
   }).join("");
   for (const c of box.querySelectorAll(".pal")) {
@@ -5049,7 +5081,6 @@ function tankClick(sx, sy) {
 
   const piece = PIECES[TANKV.pick];
   if (!piece) return;
-  if (tankLevel() < piece.lvl) { banner("locked", `needs tank level ${piece.lvl}`); return; }
   if (ownedOf(TANKV.pick) >= capFor(TANKV.pick)) {
     banner("you have enough of those", `${capFor(TANKV.pick)} is the limit for now`);
     return;
