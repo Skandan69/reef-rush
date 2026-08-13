@@ -4010,6 +4010,13 @@ function drawSprite(img, k, ph, bob, tilt, grow) {
 }
 
 function buildCritters() {
+  /* Not in the builder. `critters` there is the tank's own residents, filled by
+     syncTankCritters() when the layout arrives — and boot awaits the VIP check
+     between kicking off that load and reaching this line, so whichever of the
+     two round-trips lands second decides whether your crabs exist. Lose that
+     race and the tank is emptied of everything you paid for, silently, with no
+     way to tell it apart from the pieces never having been placed. */
+  if (MODE === "tank") return;
   critters = [];
   if (!TANKS[TANK] || !TANKS[TANK].vip) return;
   const floor = swimFloor();
