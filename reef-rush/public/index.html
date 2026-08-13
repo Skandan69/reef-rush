@@ -216,6 +216,9 @@
       .pal b { display: block; font-size: 10.5px; font-weight: 700; }
       .pal span { font-size: 9.5px; color: var(--gold); display: block; }
       .tbRow { display: flex; gap: 6px; margin-top: 7px; align-items: center; }
+      /* `.hide` is scoped to .layer and .sheet elsewhere, so a row marked hidden
+         stayed on screen doing nothing until this existed. */
+      .tbRow.hide { display: none; }
       .tbRow .tab { padding: 6px 10px; font-size: 11px; }
       /* The selected piece's name and current size, between the two buttons. */
       #sizeNow { flex: 1; text-align: center; font-size: 11px; color: var(--gold);
