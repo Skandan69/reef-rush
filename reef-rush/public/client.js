@@ -2316,7 +2316,11 @@ let holes = [];   /* wormholes, in pairs */
 let drops = [];   /* powerup pickups */
 let netsIn = [];  /* nets in flight */
 let junk = [];    /* plastic — eating the ocean's rubbish costs you */
-const POISON_CHANCE = 0.09;
+/* 0.027, down from 0.09: a 70% cut. Poisonous fish accumulate faster than the
+   spawn rate suggests, because players learn to leave them alone -- measured on
+   the live build they were 15.7% of the shoal on screen against a 9% spawn
+   chance, so the water was noticeably more hostile than the number implied. */
+const POISON_CHANCE = 0.027;
 
 const PU = { boost: 0, shield: 0, magnet: 0, nets: 0, spitCd: 0, shieldLock: 0 };
 
@@ -2769,7 +2773,11 @@ function stepJunk(dt, ring) {
     floatText(player.x, player.y - player.r, "-" + loss + " PLASTIC", "#c9d6de");
     Snd.hit();
   }
-  if (junk.length < 16 && Math.random() < dt * 2.2) spawnJunk(player.x, player.y, ring);
+  /* Five at a time, down from sixteen: a 70% cut. The cap is what sets how much
+     plastic is in the water, since the spawn rate refills it faster than it
+     drifts away -- it sat pinned at the cap the whole time it was measured. The
+     rate is left alone so the few that remain still arrive promptly. */
+  if (junk.length < 5 && Math.random() < dt * 2.2) spawnJunk(player.x, player.y, ring);
 }
 
 function drawJunk() {
