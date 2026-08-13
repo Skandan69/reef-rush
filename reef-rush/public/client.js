@@ -6253,6 +6253,14 @@ if (MODE === "tank") {
     el("visitSheet").classList.add("hide");
     if (TANKV.viewing) { TANKV.viewing = ""; loadTank(pid); }
   });
+  /* The autosave rides the render loop, and browsers stop the render loop the
+     moment a tab stops being visible. So anything changed and then tabbed away
+     from — or closed, or backgrounded on a phone — was held in memory and lost,
+     with the tank still showing it right up until the reload. The save already
+     carried `keepalive` for exactly this moment; nothing was ever firing it. */
+  for (const ev of ["visibilitychange", "pagehide", "blur"]) {
+    addEventListener(ev, () => { if (MODE === "tank" && TANKV.dirty) saveTank(); });
+  }
   el("tankLeave").addEventListener("click", () => {
     if (TANKV.dirty) saveTank();
     const q = new URLSearchParams(location.search);
