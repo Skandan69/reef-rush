@@ -100,6 +100,19 @@ async function ensureSchema(db: D1Database): Promise<void> {
   } catch {
     /* index already there */
   }
+  /* A tank now carries the size of the glass it was built in, because the glass
+     grows. Every row that predates this was built at the original 4000 x 2400,
+     which is exactly what these defaults say, so no existing layout moves. */
+  try {
+    await db.prepare(`ALTER TABLE tanks ADD COLUMN w INTEGER NOT NULL DEFAULT 4000`).run();
+  } catch {
+    /* already migrated */
+  }
+  try {
+    await db.prepare(`ALTER TABLE tanks ADD COLUMN h INTEGER NOT NULL DEFAULT 2400`).run();
+  } catch {
+    /* already migrated */
+  }
 
   /* one-off: rows written while verifying these endpoints */
   try {
@@ -398,9 +411,17 @@ export async function readVip(env: Env, pid: string): Promise<Response> {
 
 /* 200, not 120: the byte cap below is the real guard on storage, and a densely
    planted tank runs to about 6KB of it. The old limit stopped a build being
-   finished long before it stopped being cheap to store. */
-const TANK_MAX_ITEMS = 200;
-const TANK_MAX_BYTES = 12 * 1024;
+   finished long before it stopped being cheap to store.
+   400 is the ceiling for the largest glass; the client asks for less than this
+   until a tank has actually grown into it. */
+const TANK_MAX_ITEMS = 400;
+const TANK_MAX_BYTES = 24 * 1024;
+
+/* The glass grows with the tank, so the coordinate clamp has to admit the
+   largest size that can ever exist rather than the starting one. Keep these in
+   step with SIZES in client.js — the last tier there is this. */
+const TANK_MIN_W = 4000, TANK_MIN_H = 2400;
+const TANK_MAX_W = 7600, TANK_MAX_H = 4000;
 
 export async function saveTank(env: Env, body: unknown): Promise<Response> {
   if (typeof body !== "object" || body === null) {
@@ -412,13 +433,21 @@ export async function saveTank(env: Env, body: unknown): Promise<Response> {
   if (!Array.isArray(b.items)) return json({ ok: false, error: "items must be an array" }, 400);
   if (b.items.length > TANK_MAX_ITEMS) return json({ ok: false, error: "too many pieces" }, 400);
 
+  /* The glass this layout was built in. Stored with it, because a piece's
+     coordinates only mean anything against the tank that held them: read a
+     4000 x 2400 layout into a 7600 x 4000 tank without knowing that and every
+     piece hangs a thousand pixels above the sand. Clamped to the tiers the
+     client can actually reach, and never below the original size. */
+  const w = Math.max(TANK_MIN_W, Math.min(TANK_MAX_W, int(b.w, TANK_MIN_W, TANK_MAX_W) || TANK_MIN_W));
+  const h = Math.max(TANK_MIN_H, Math.min(TANK_MAX_H, int(b.h, TANK_MIN_H, TANK_MAX_H) || TANK_MIN_H));
+
   /* rebuilt field by field: whatever arrives, only these shapes are stored */
   const items = b.items.slice(0, TANK_MAX_ITEMS).map((raw) => {
     const it = (raw ?? {}) as Record<string, unknown>;
     return {
       t: typeof it.t === "string" ? it.t.slice(0, 16) : "rock",
-      x: int(it.x, 0, 4000),
-      y: int(it.y, 0, 2400),
+      x: int(it.x, 0, w),
+      y: int(it.y, 0, h),
       /* Up to 420: a pillar or a kelp frond has to be able to reach a decent
          part of a 2400-tall tank, and at 200 the tallest piece covered under a
          quarter of it, which is why every tank looked like a strip of reef
@@ -436,11 +465,15 @@ export async function saveTank(env: Env, body: unknown): Promise<Response> {
   await ensureSchema(db);
   await db
     .prepare(
-      `INSERT INTO tanks (pid, name, flag, layout, items, updated)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+      `INSERT INTO tanks (pid, name, flag, layout, items, updated, w, h)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
        ON CONFLICT(pid) DO UPDATE SET
          name = excluded.name, flag = excluded.flag,
-         layout = excluded.layout, items = excluded.items, updated = excluded.updated`,
+         layout = excluded.layout, items = excluded.items, updated = excluded.updated,
+         /* The glass never shrinks. A player who removes half their pieces
+            drops a level or two, and if that took the tank back down with them
+            everything above the new roof would be silently clipped away. */
+         w = max(tanks.w, excluded.w), h = max(tanks.h, excluded.h)`,
     )
     .bind(
       pid,
@@ -449,10 +482,12 @@ export async function saveTank(env: Env, body: unknown): Promise<Response> {
       layout,
       items.length,
       Date.now(),
+      w,
+      h,
     )
     .run();
 
-  return json({ ok: true, items: items.length });
+  return json({ ok: true, items: items.length, w, h });
 }
 
 /**
@@ -499,17 +534,20 @@ export async function readTank(env: Env, pid: string, by = ""): Promise<Response
     }
   }
   const row = await db
-    .prepare(`SELECT pid, name, flag, layout, updated FROM tanks WHERE pid = ?1`)
+    .prepare(`SELECT pid, name, flag, layout, updated, w, h FROM tanks WHERE pid = ?1`)
     .bind(pid)
-    .first<{ pid: string; name: string; flag: string; layout: string; updated: number }>();
-  if (!row) return json({ ok: true, found: false, items: [] });
+    .first<{ pid: string; name: string; flag: string; layout: string; updated: number; w: number; h: number }>();
+  if (!row) return json({ ok: true, found: false, items: [], w: TANK_MIN_W, h: TANK_MIN_H });
   let items: unknown = [];
   try {
     items = JSON.parse(row.layout);
   } catch {
     items = [];
   }
-  return json({ ok: true, found: true, name: row.name, flag: row.flag ?? "", updated: row.updated, items });
+  return json({
+    ok: true, found: true, name: row.name, flag: row.flag ?? "", updated: row.updated, items,
+    w: row.w || TANK_MIN_W, h: row.h || TANK_MIN_H,
+  });
 }
 
 export async function listTanks(env: Env, pid: string): Promise<Response> {
