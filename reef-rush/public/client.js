@@ -4034,7 +4034,18 @@ function buildCritters() {
 const CRITTER_SPEED = { mermaid: 74, octopus: 26, seahorse: 20, crab: 34, prawn: 52 };
 
 function stepCritters(dt) {
-  const floor = swimFloor();
+  /* The builder's tank is its own world — 4000 x 2400 — and not the reef's
+     16800 x 6200, which is what WORLD still holds in tank mode. Stepping the
+     residents against WORLD put every crab at y 5890, three and a half
+     thousand pixels below the glass, pinned the swimmers to a single line at
+     swimFloor() * 0.22, and let anything that drifted right keep walking to
+     x 16540 and never turn round. You bought a crab, paid the 70 pearls, and
+     nothing ever appeared — which is indistinguishable from the button being
+     broken, and is exactly how it was reported. */
+  const inTank = MODE === "tank";
+  const floor = inTank ? TANK_H - 130 : swimFloor();
+  const edgeL = inTank ? 140 : 260;
+  const edgeR = (inTank ? TANK_W : WORLD.w) - edgeL;
   for (let i = 0; i < critters.length; i++) {
     const c = critters[i];
     c.ph += dt * (c.kind === "mermaid" ? 1.15 : 0.85);
@@ -4066,8 +4077,8 @@ function stepCritters(dt) {
     /* they go somewhere, rather than jittering on the spot */
     const sp = CRITTER_SPEED[c.kind] || 30;
     c.x += c.dir * sp * dt;
-    if (c.x < 260) c.dir = 1;
-    else if (c.x > WORLD.w - 260) c.dir = -1;
+    if (c.x < edgeL) c.dir = 1;
+    else if (c.x > edgeR) c.dir = -1;
     else if (Math.random() < dt * 0.06) c.dir *= -1;
 
     if (c.kind === "crab") {
@@ -4740,6 +4751,10 @@ function drawBossBar(k) {
    ========================================================================== */
 
 const TANK_W = 4000, TANK_H = 2400;
+/* Kept in step with TANK_MAX_ITEMS in server/ranks.ts by hand. If these two
+   ever disagree the smaller one wins silently, which is how the builder came
+   to refuse a tank the server was perfectly happy to store. */
+const TANK_MAX_ITEMS = 200;
 
 /* The whole catalogue is available from the first minute. There used to be a
    `lvl` on each piece and you unlocked it by building; the trouble was that
@@ -5089,7 +5104,9 @@ function tankClick(sx, sy) {
     banner("not enough", piece.gem ? "gems" : "pearls");
     return;
   }
-  if (TANKV.items.length >= 120) { banner("tank is full", "120 pieces"); return; }
+  /* Matched to what the server actually stores. At 120 a player copying Coral
+     Cathedral (152 pieces) hit "tank is full" less than halfway through it. */
+  if (TANKV.items.length >= TANK_MAX_ITEMS) { banner("tank is full", `${TANK_MAX_ITEMS} pieces`); return; }
   if (piece.gem) Wallet.gems -= piece.gem; else Wallet.pearls -= piece.price;
   Wallet.save();
   TANKV.items.push({ t: TANKV.pick, x: Math.round(wx), y: Math.round(wy), s: 100 });
