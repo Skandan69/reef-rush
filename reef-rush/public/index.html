@@ -215,8 +215,11 @@
       .pal.full { opacity: .5; }
       .pal b { display: block; font-size: 10.5px; font-weight: 700; }
       .pal span { font-size: 9.5px; color: var(--gold); display: block; }
-      .tbRow { display: flex; gap: 6px; margin-top: 7px; }
+      .tbRow { display: flex; gap: 6px; margin-top: 7px; align-items: center; }
       .tbRow .tab { padding: 6px 10px; font-size: 11px; }
+      /* The selected piece's name and current size, between the two buttons. */
+      #sizeNow { flex: 1; text-align: center; font-size: 11px; color: var(--gold);
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #tankHint { margin: 6px 0 0; font-size: 10.5px; }
       .tbRow .tab { flex: 1; }
       #tankSell.on { border-color: var(--coral); color: var(--coral); }
@@ -391,8 +394,17 @@
         <div id="tankFold">▾</div>
         <div class="tbHead"><b id="tankTitle">Your Tank</b><span id="tankPurse">🫧 0</span></div>
         <div id="palette"></div>
+        <!-- Only shown with a piece selected: three buttons that do nothing are
+             worse than no buttons, and the row is the only place the size of a
+             piece is ever named. -->
+        <div class="tbRow hide" id="sizeRow">
+          <button class="tab" id="sizeDown" type="button">− Smaller</button>
+          <span id="sizeNow"></span>
+          <button class="tab" id="sizeUp" type="button">Bigger +</button>
+        </div>
         <div class="tbRow">
           <button class="tab" id="tankSell" type="button">Remove</button>
+          <button class="tab" id="tankFitSize" type="button">Fit sizes</button>
           <button class="tab" id="tankVisit" type="button">Visit others</button>
           <button class="tab" id="tankLeave" type="button">Leave</button>
         </div>
