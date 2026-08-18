@@ -1372,6 +1372,25 @@ const G = {
 let player = null;
 let bannerTimer = 0;
 
+/* Nothing takes your score below this. Under the floor the number only ever
+   climbs, so a new player never watches their run slide backwards; above it
+   the usual penalties bite, but only down as far as the floor. Every penalty
+   in the game goes through loseScore, which returns what it actually took so
+   the "-N" you see on screen is the number that really left. */
+const SCORE_FLOOR = 10000;   /* deliberately the same number as BOSS_GATE below:
+                                the point where the game stops being a nursery is
+                                the point where losing points starts to mean
+                                something. Keep the two in step if either moves. */
+function loseScore(amt) {
+  const want = Math.max(0, Math.round(amt || 0));
+  if (!want) return 0;
+  const room = G.score - SCORE_FLOOR;
+  if (room <= 0) return 0;
+  const took = Math.min(want, room);
+  G.score -= took;
+  return took;
+}
+
 /** Nothing that can eat you starts the run inside your neighbourhood. */
 function clearPredatorsNear(px, py, pr, radius) {
   for (let i = 0; i < fishes.length; i++) {
@@ -1636,12 +1655,11 @@ function collide() {
       bubble(small.x, small.y, small.r * 0.8, 5, 0, 0);
 
       if (big === player && small.poison) {
-        const loss = Math.round(16 * Math.sqrt(small.mass)) + 20;
-        G.score = Math.max(0, G.score - loss);
+        const loss = loseScore(Math.round(16 * Math.sqrt(small.mass)) + 20);
         big.mass = Math.max(PLAYER_START_MASS, big.mass * 0.88);
         big.r = radiusOf(big.mass);
         cam.shake = Math.min(1, cam.shake + 0.7);
-        floatText(small.x, small.y - small.r, "-" + loss + " POISON", "#b6ff7a");
+        floatText(small.x, small.y - small.r, (loss ? "-" + loss + " " : "") + "POISON", "#b6ff7a");
         spark(small.x, small.y, small.r * 1.4, "rgba(150,255,110,1)");
         Snd.hit();
       } else if (big === player) {
@@ -2651,9 +2669,8 @@ function stepGlobs(dt) {
 
       if (g.pea) {
         if (f === player) {
-          const loss = Math.max(8, Math.round(G.score * 0.012));
-          G.score = Math.max(0, G.score - loss);
-          floatText(f.x, f.y - f.r, "-" + loss, "#bff7ff");
+          const loss = loseScore(Math.max(8, Math.round(G.score * 0.012)));
+          if (loss) floatText(f.x, f.y - f.r, "-" + loss, "#bff7ff");
           cam.shake = Math.min(0.5, cam.shake + 0.18);
           Snd.hit();
         }
@@ -2792,12 +2809,11 @@ function stepJunk(dt, ring) {
     if (!G.running || G.dead) continue;
     if (Math.hypot(j.x - player.x, j.y - player.y) > player.r * 0.85 + 26) continue;
     junk.splice(i, 1);
-    const loss = Math.max(20, Math.round(G.score * 0.04));
-    G.score = Math.max(0, G.score - loss);
+    const loss = loseScore(Math.max(20, Math.round(G.score * 0.04)));
     player.mass = Math.max(PLAYER_START_MASS, player.mass * 0.94);
     player.r = radiusOf(player.mass);
     cam.shake = Math.min(1, cam.shake + 0.4);
-    floatText(player.x, player.y - player.r, "-" + loss + " PLASTIC", "#c9d6de");
+    floatText(player.x, player.y - player.r, (loss ? "-" + loss + " " : "") + "PLASTIC", "#c9d6de");
     Snd.hit();
   }
   /* Five at a time, down from sixteen: a 70% cut. The cap is what sets how much
@@ -3331,7 +3347,7 @@ function stepSafeWater(dt) {
   /* outside: bleeding mass, and a nudge back toward the light */
   player.mass = Math.max(1, player.mass * (1 - 1.1 * dt));
   player.r = radiusOf(player.mass);
-  G.score = Math.max(0, G.score - Math.round(60 * dt));
+  loseScore(60 * dt);
   cam.shake = Math.min(0.6, cam.shake + dt);
   if (GAME === "tidepool") return;                 /* waves drain, they do not kill outright */
   if (player.mass <= PLAYER_START_MASS * 0.5) gameOver(null);
@@ -4504,7 +4520,7 @@ function stepBoss(dt) {
       player.y += Math.sin(away) * 900 * dt;
       player.mass = Math.max(1, player.mass * (1 - 0.9 * dt));
       player.r = radiusOf(player.mass);
-      G.score = Math.max(0, G.score - Math.round(220 * dt));
+      loseScore(220 * dt);
       cam.shake = 1;
       if (player.mass <= PLAYER_START_MASS * 0.4) gameOver(null);
     }
